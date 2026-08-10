@@ -7,6 +7,7 @@ import {
   summarizeWeek,
   type DailyScores,
 } from "../_shared/weekly-report.ts";
+import { enforceRateLimit } from "../_shared/rate-limit.ts";
 
 const CLAUDE_MODEL = "claude-haiku-4-5-20251001";
 
@@ -60,6 +61,10 @@ export default {
     }
 
     const userId = ctx.userClaims!.id;
+
+    const rateLimited = await enforceRateLimit(ctx.supabase, userId, "reports-weekly", 10, 60);
+    if (rateLimited) return rateLimited;
+
     const today = dateOnly(new Date());
     const { start: todayStart, end: todayEnd } = dayRange(today);
 

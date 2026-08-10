@@ -1,11 +1,21 @@
 import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
+import { enforceRateLimit } from "../_shared/rate-limit.ts";
 
 const ALLOWED_TYPES = new Set(["wake", "meal", "study_start", "study_end"]);
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export default {
   fetch: withSupabase({ auth: "user" }, async (req, ctx) => {
+    const rateLimited = await enforceRateLimit(
+      ctx.supabase,
+      ctx.userClaims!.id,
+      "logs",
+      60,
+      60,
+    );
+    if (rateLimited) return rateLimited;
+
     if (req.method === "POST") {
       let body: { type?: string; timestamp?: string };
       try {

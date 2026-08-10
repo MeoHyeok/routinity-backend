@@ -1,8 +1,18 @@
 import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
+import { enforceRateLimit } from "../_shared/rate-limit.ts";
 
 export default {
   fetch: withSupabase({ auth: "user" }, async (req, ctx) => {
+    const rateLimited = await enforceRateLimit(
+      ctx.supabase,
+      ctx.userClaims!.id,
+      "goals",
+      20,
+      60,
+    );
+    if (rateLimited) return rateLimited;
+
     if (req.method === "POST") {
       let body: { target_type?: string; target_value?: string };
       try {

@@ -1,6 +1,7 @@
 import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
 import { computeScores } from "../_shared/scoring.ts";
+import { enforceRateLimit } from "../_shared/rate-limit.ts";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -9,6 +10,15 @@ export default {
     if (req.method !== "GET") {
       return Response.json({ error: "method not allowed" }, { status: 405 });
     }
+
+    const rateLimited = await enforceRateLimit(
+      ctx.supabase,
+      ctx.userClaims!.id,
+      "scores",
+      60,
+      60,
+    );
+    if (rateLimited) return rateLimited;
 
     const date = new URL(req.url).searchParams.get("date");
     if (!date || !DATE_RE.test(date)) {

@@ -8,6 +8,11 @@ ROADMAP.md 2번 섹션의 초안을 실제 구현에 맞춰 확정한 문서. �
 - **anon key** (Supabase Auth SDK 초기화용): `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5vcXZyZmV3a3lmZHJzb2Fzem16Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYzMzA3NDksImV4cCI6MjEwMTkwNjc0OX0.rAZiVgHR1FLs66wNEiW28WERlY1NZEi__Y3iGk_-1kk`
 - **인증**: Supabase Auth로 로그인해서 받은 `access_token`을 모든 요청에 `Authorization: Bearer <access_token>` 헤더로 포함. 헤더가 없거나 유효하지 않으면 `401`.
 - **에러 응답 형식**: `{ "error": "설명 문자열" }` (401은 플랫폼 레벨 응답이라 `{ "code": "...", "message": "..." }` 형식일 수 있음)
+- **레이트리밋**: 유저별·엔드포인트별 1분 고정 윈도우. 초과 시 `429` + `{ "error": "rate limit exceeded, try again later" }`. 앱에서 429를 받으면 짧게 재시도하지 말고 사용자에게 "잠시 후 다시 시도" 정도로 안내 권장. 엔드포인트별 한도:
+  - `/logs`: 60회/분
+  - `/goals`: 20회/분
+  - `/scores`: 60회/분
+  - `/reports-weekly`: 10회/분 (하루 1회만 실제 생성되고 나머지는 캐시 응답이라 넉넉함)
 
 ## POST /functions/v1/logs
 
@@ -202,6 +207,11 @@ Authorization: Bearer <access_token>
 - 목표 없는 유저는 안내 템플릿 반환
 - 다른 유저의 리포트는 안 보임 (RLS)
 
+## 레이트리밋/환경변수 점검 완료 (Day 13-14 착수분)
+
+- **레이트리밋**: `rate_limits` 테이블 + `check_rate_limit()` Postgres 함수(고정 1분 윈도우)를 4개 함수 전부에 연결. 실제 요청으로 검증: DB 함수 자체(작은 한도로 직접 RPC 호출해 3회 통과 후 4회째 차단 확인), `/reports-weekly` 실제 엔드포인트에서 10회 통과 후 11회째 `429` 확인(두 번 재현), 유저별 독립적으로 적용되는 것도 확인
+- **환경변수**: `.env`/`.env.local`이 git에 커밋된 적 없음, git history 전체에 service_role/Anthropic 키 노출 없음(anon key만 있고 이건 iOS 공유용으로 의도된 것), 함수 코드에 하드코딩된 시크릿 없음, Supabase 프로젝트 시크릿은 플랫폼 자동 주입분만 존재 확인. `ANTHROPIC_API_KEY`는 여전히 미설정 상태(템플릿 폴백으로 정상 동작 중이며, 실제 Claude 응답을 보려면 별도로 시크릿 등록 필요)
+
 ## 구현 완료
 
-로드맵의 4개 엔드포인트(`/logs`, `/goals`, `/scores`, `/reports/weekly`) 모두 구현/배포/테스트 완료. 남은 건 iOS팀과의 통합 테스트, RLS/레이트리밋/환경변수 최종 점검, 배포 (로드맵 11-14일차).
+로드맵의 4개 엔드포인트(`/logs`, `/goals`, `/scores`, `/reports/weekly`) 모두 구현/배포/테스트 완료. 레이트리밋·환경변수 점검도 완료. 남은 건 iOS팀과의 통합 테스트와 프로덕션 배포 (로드맵 11-14일차).
