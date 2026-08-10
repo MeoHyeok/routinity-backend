@@ -1,4 +1,4 @@
-# API 계약 — /logs, /goals, /scores
+# API 계약 — /logs, /goals, /scores, /reports/weekly
 
 ROADMAP.md 2번 섹션의 초안을 실제 구현에 맞춰 확정한 문서. 이후 필드명/타입이 바뀌면 팀 채널에 즉시 공지.
 
@@ -162,6 +162,46 @@ Authorization: Bearer <access_token>
 - `supabase/functions/_shared/scoring.ts`의 순수 함수를 `npm test`로 검증: wake_time/study_duration 각각 achieved/not_achieved/missing 3케이스 + 여러 세션 합산 + 미지원 target_type 필터링, 총 8개 테스트 통과
 - 실제 배포본에도 동일 시나리오로 확인: 인증 없음(401), `date` 누락(400), 로그 있는 날짜(achieved+not_achieved), 로그 없는 날짜(둘 다 missing), 목표 없는 유저는 빈 배열
 
-## 아직 구현 안 됨 (Day 8 이후)
+---
 
-`/reports/weekly`
+## GET /functions/v1/reports-weekly
+
+이번 주(오늘 포함 최근 7일, UTC 기준) 목표 달성 현황을 요약한 AI 리포트 조회. 조회 시점에 없으면 생성.
+
+**요청 헤더**
+```
+Authorization: Bearer <access_token>
+```
+
+**응답 200 (신규 생성)**
+```json
+{
+  "period": "weekly",
+  "content": "이번 주 루티니티 리포트\n\n기상 목표: 7일 중 2일 달성, 1일 미달, 4일 기록 없음\n공부 시간 목표: 7일 중 1일 달성, 1일 미달, 5일 기록 없음",
+  "cached": false,
+  "generated_via": "claude" | "template"
+}
+```
+
+**응답 200 (같은 날 재조회 — 캐시됨)**
+```json
+{ "period": "weekly", "content": "...", "cached": true }
+```
+
+- 하루에 한 번만 생성. 같은 UTC 날짜에 다시 GET하면 새로 생성하지 않고 `ai_reports`에 저장된 기존 리포트를 그대로 반환 (`cached: true`)
+- 목표를 하나도 설정 안 했으면 "목표가 없다"는 안내 문구를 템플릿으로 반환
+- **AI 생성 실패 시 자동으로 룰 기반 템플릿으로 폴백** (Claude API 키 미설정, 네트워크 오류, API 에러, refusal 전부 포함) — 로드맵 리스크 대응 그대로 구현. `generated_via`로 어느 경로였는지 확인 가능
+- 리포트 생성에 사용하는 모델: `claude-haiku-4-5-20251001`
+
+## /reports/weekly 동작 확인 완료
+
+- 인증 없는 요청 → 401
+- 실제 목표+로그 데이터로 7일치 집계 정확성 확인 (기상/공부 각각 achieved/not_achieved/missing 카운트가 실제 로그와 일치)
+- `ANTHROPIC_API_KEY` 미설정 상태에서 템플릿 폴백 정상 동작 확인 (`generated_via: "template"`)
+- 같은 날 재조회 시 캐시 반환 확인
+- 목표 없는 유저는 안내 템플릿 반환
+- 다른 유저의 리포트는 안 보임 (RLS)
+
+## 구현 완료
+
+로드맵의 4개 엔드포인트(`/logs`, `/goals`, `/scores`, `/reports/weekly`) 모두 구현/배포/테스트 완료. 남은 건 iOS팀과의 통합 테스트, RLS/레이트리밋/환경변수 최종 점검, 배포 (로드맵 11-14일차).
