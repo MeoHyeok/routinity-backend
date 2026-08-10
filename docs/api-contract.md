@@ -1,4 +1,4 @@
-# API 계약 — /logs, /goals
+# API 계약 — /logs, /goals, /scores
 
 ROADMAP.md 2번 섹션의 초안을 실제 구현에 맞춰 확정한 문서. 이후 필드명/타입이 바뀌면 팀 채널에 즉시 공지.
 
@@ -125,6 +125,43 @@ Authorization: Bearer <access_token>
 - GET이 해당 유저의 모든 목표를 배열로 반환
 - 다른 유저의 목표는 절대 보이지 않음 (RLS)
 
-## 아직 구현 안 됨 (Day 6 이후)
+---
 
-`/scores`, `/reports/weekly`
+## GET /functions/v1/scores?date=YYYY-MM-DD
+
+그날 목표 대비 점수 조회. 유저가 설정한 목표(`/goals`)와 그날 로그(`/logs`)를 비교해서 계산.
+
+**요청 헤더**
+```
+Authorization: Bearer <access_token>
+```
+
+`date` 쿼리 파라미터 필수 (`YYYY-MM-DD`, UTC 기준).
+
+**응답 200**
+```json
+{
+  "date": "2026-08-10",
+  "scores": [
+    { "target_type": "wake_time", "target_value": "07:00", "actual_value": "06:50", "status": "achieved" },
+    { "target_type": "study_duration", "target_value": "60", "actual_value": "30", "status": "not_achieved" }
+  ]
+}
+```
+
+- `status`: `"achieved" | "not_achieved" | "missing"`
+  - `achieved`: 그날 실측값이 목표 충족
+  - `not_achieved`: 로그는 있지만 목표 미달
+  - `missing`: 그날 관련 로그가 아예 없음 (미달과 구분됨)
+- `actual_value`: `missing`일 땐 항상 `null`
+- 현재 채점 로직은 `target_type`이 `wake_time`(로그의 `wake` 타임스탬프, 목표보다 이르거나 같으면 achieved) / `study_duration`(그날 `study_start`~`study_end` 쌍의 총합(분), 목표 이상이면 achieved)일 때만 동작. 그 외 `target_type`으로 설정한 목표는 `scores` 배열에서 제외됨(아직 채점 규칙 없음)
+- 목표를 하나도 설정 안 한 유저는 `scores: []`
+
+## /scores 동작 확인 완료 (유닛 테스트 + 실제 요청)
+
+- `supabase/functions/_shared/scoring.ts`의 순수 함수를 `npm test`로 검증: wake_time/study_duration 각각 achieved/not_achieved/missing 3케이스 + 여러 세션 합산 + 미지원 target_type 필터링, 총 8개 테스트 통과
+- 실제 배포본에도 동일 시나리오로 확인: 인증 없음(401), `date` 누락(400), 로그 있는 날짜(achieved+not_achieved), 로그 없는 날짜(둘 다 missing), 목표 없는 유저는 빈 배열
+
+## 아직 구현 안 됨 (Day 8 이후)
+
+`/reports/weekly`
