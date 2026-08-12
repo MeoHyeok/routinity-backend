@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<title>Routinity API 데모</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root {
+    --bg: #f7f7f8;
+    --card: #ffffff;
+    --border: #e2e2e6;
+    --text: #1c1c1f;
+    --muted: #6b6b73;
+    --accent: #4f46e5;
+    --accent-hover: #4338ca;
+    --ok: #15803d;
+    --err: #b91c1c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 24px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    max-width: 880px;
+    margin-inline: auto;
+  }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    margin-bottom: 16px;
+  }
+  .card h2 {
+    font-size: 14px;
+    margin: 0 0 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; align-items: center; }
+  input, select {
+    padding: 7px 9px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+    background: var(--bg);
+    color: var(--text);
+  }
+  button {
+    padding: 7px 14px;
+    border: none;
+    border-radius: 6px;
+    background: var(--accent);
+    color: white;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  button:hover { background: var(--accent-hover); }
+  button:disabled { background: #b6b6c0; cursor: not-allowed; }
+  button.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  pre {
+    background: #101014;
+    color: #d8d8dc;
+    padding: 10px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    overflow-x: auto;
+    margin: 8px 0 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .status { font-size: 12px; margin-top: 6px; }
+  .status.ok { color: var(--ok); }
+  .status.err { color: var(--err); }
+  .locked { opacity: 0.4; pointer-events: none; }
+  .badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: #eef2ff;
+    color: var(--accent);
+  }
+</style>
+</head>
+<body>
+
+<h1>Routinity API 데모</h1>
+<div class="sub">배포된 Supabase Edge Functions에 브라우저에서 직접 호출하는 테스트 페이지입니다. 실제 iOS 앱이 아닙니다.</div>
+
+<div class="card">
+  <h2>0. 로그인 <span id="auth-badge" class="badge">로그아웃 상태</span></h2>
+  <div class="row">
+    <input id="email" type="email" placeholder="email" value="" style="width:220px" />
+    <input id="password" type="password" placeholder="password" style="width:160px" />
+    <button onclick="signup()">회원가입</button>
+    <button onclick="login()">로그인</button>
+    <button class="secondary" onclick="logout()">로그아웃</button>
+  </div>
+  <div id="auth-status" class="status"></div>
+</div>
+
+<div id="app" class="locked">
+
+  <div class="card">
+    <h2>1. 로그 기록 (POST /logs)</h2>
+    <div class="row">
+      <select id="log-type">
+        <option value="wake">wake</option>
+        <option value="meal">meal</option>
+        <option value="study_start">study_start</option>
+        <option value="study_end">study_end</option>
+      </select>
+      <input id="log-timestamp" type="datetime-local" />
+      <button onclick="postLog()">기록</button>
+    </div>
+    <div class="row">
+      <input id="log-date" type="date" />
+      <button class="secondary" onclick="getLogs()">그날 로그 조회 (GET /logs)</button>
+    </div>
+    <pre id="log-out">-</pre>
+  </div>
+
+  <div class="card">
+    <h2>2. 목표 설정 (POST /goals)</h2>
+    <div class="row">
+      <select id="goal-type">
+        <option value="wake_time">wake_time (HH:MM)</option>
+        <option value="study_duration">study_duration (분)</option>
+      </select>
+      <input id="goal-value" placeholder="예: 07:00 또는 60" style="width:140px" />
+      <button onclick="postGoal()">목표 저장</button>
+      <button class="secondary" onclick="getGoals()">목표 목록 조회 (GET /goals)</button>
+    </div>
+    <pre id="goal-out">-</pre>
+  </div>
+
+  <div class="card">
+    <h2>3. 점수 조회 (GET /scores)</h2>
+    <div class="row">
+      <input id="score-date" type="date" />
+      <button onclick="getScores()">점수 조회</button>
+    </div>
+    <pre id="score-out">-</pre>
+  </div>
+
+  <div class="card">
+    <h2>4. 주간 AI 리포트 (GET /reports-weekly)</h2>
+    <div class="row">
+      <button onclick="getReport()">리포트 조회/생성</button>
+    </div>
+    <pre id="report-out">-</pre>
+  </div>
+
+</div>
+
+<script>
+const SUPABASE_URL = "https://noqvrfewkyfdrsoaszmz.supabase.co";
+const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5vcXZyZmV3a3lmZHJzb2Fzem16Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYzMzA3NDksImV4cCI6MjEwMTkwNjc0OX0.rAZiVgHR1FLs66wNEiW28WERlY1NZEi__Y3iGk_-1kk";
+
+let accessToken = null;
+
+function setAuthStatus(msg, ok) {
+  const el = document.getElementById("auth-status");
+  el.textContent = msg;
+  el.className = "status " + (ok ? "ok" : "err");
+}
+
+function setLocked(locked) {
+  document.getElementById("app").className = locked ? "locked" : "";
+  document.getElementById("auth-badge").textContent = locked ? "로그아웃 상태" : "로그인됨";
+}
+
+async function authRequest(path, body) {
+  const res = await fetch(`${SUPABASE_URL}${path}`, {
+    method: "POST",
+    headers: { apikey: ANON_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  return { ok: res.ok, data };
+}
+
+async function signup() {
+  const email = document.getElementById("email").value;
+  const password = document.getElementById("password").value;
+  const { ok, data } = await authRequest("/auth/v1/signup", { email, password });
+  if (ok) {
+    setAuthStatus("가입 완료. 이메일 확인이 필요할 수 있어요 — 안 되면 관리자가 이미 만들어둔 계정으로 로그인하세요.", true);
+  } else {
+    setAuthStatus("가입 실패: " + (data.msg || data.error_description || JSON.stringify(data)), false);
+  }
+}
+
+async function login() {
+  const email = document.getElementById("email").value;
+  const password = document.getElementById("password").value;
+  const { ok, data } = await authRequest("/auth/v1/token?grant_type=password", { email, password });
+  if (ok && data.access_token) {
+    accessToken = data.access_token;
+    setAuthStatus("로그인 성공: " + email, true);
+    setLocked(false);
+    const today = new Date().toISOString().slice(0, 10);
+    document.getElementById("log-date").value = today;
+    document.getElementById("score-date").value = today;
+    document.getElementById("log-timestamp").value = new Date().toISOString().slice(0, 16);
+  } else {
+    setAuthStatus("로그인 실패: " + (data.msg || data.error_description || JSON.stringify(data)), false);
+  }
+}
+
+function logout() {
+  accessToken = null;
+  setAuthStatus("로그아웃됨", true);
+  setLocked(true);
+}
+
+async function api(path, method = "GET", body) {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  let data;
+  try { data = await res.json(); } catch { data = null; }
+  return { status: res.status, data };
+}
+
+function show(id, status, data) {
+  document.getElementById(id).textContent = `HTTP ${status}\n` + JSON.stringify(data, null, 2);
+}
+
+async function postLog() {
+  const type = document.getElementById("log-type").value;
+  const raw = document.getElementById("log-timestamp").value;
+  const timestamp = new Date(raw).toISOString();
+  const { status, data } = await api("/logs", "POST", { type, timestamp });
+  show("log-out", status, data);
+}
+
+async function getLogs() {
+  const date = document.getElementById("log-date").value;
+  const { status, data } = await api(`/logs?date=${date}`, "GET");
+  show("log-out", status, data);
+}
+
+async function postGoal() {
+  const target_type = document.getElementById("goal-type").value;
+  const target_value = document.getElementById("goal-value").value;
+  const { status, data } = await api("/goals", "POST", { target_type, target_value });
+  show("goal-out", status, data);
+}
+
+async function getGoals() {
+  const { status, data } = await api("/goals", "GET");
+  show("goal-out", status, data);
+}
+
+async function getScores() {
+  const date = document.getElementById("score-date").value;
+  const { status, data } = await api(`/scores?date=${date}`, "GET");
+  show("score-out", status, data);
+}
+
+async function getReport() {
+  const { status, data } = await api("/reports-weekly", "GET");
+  show("report-out", status, data);
+}
+</script>
+
+</body>
+</html>
