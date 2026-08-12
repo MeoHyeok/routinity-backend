@@ -34,7 +34,8 @@ export default {
         .from("routine_logs")
         .select("type, timestamp")
         .gte("timestamp", start)
-        .lt("timestamp", end),
+        .lt("timestamp", end)
+        .order("timestamp", { ascending: true }),
     ]);
 
     if (goalsResult.error) {

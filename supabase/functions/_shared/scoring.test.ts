@@ -75,6 +75,17 @@ test("computeScores: multiple goals scored independently, unsupported target_typ
   );
 });
 
+test("wake_time: earliest wake log wins regardless of input order (DB row order isn't guaranteed)", () => {
+  const goals = [{ target_type: "wake_time", target_value: "07:00" }];
+  const logs = [
+    { type: "wake", timestamp: "2026-08-10T07:20:00Z" },
+    { type: "wake", timestamp: "2026-08-10T06:40:00Z" },
+  ];
+  const [score] = computeScores(goals, logs);
+  assert.equal(score.actual_value, "06:40");
+  assert.equal(score.status, "achieved");
+});
+
 test("study_duration: an unmatched trailing study_start is not counted", () => {
   const goals = [{ target_type: "study_duration", target_value: "10" }];
   const logs = [

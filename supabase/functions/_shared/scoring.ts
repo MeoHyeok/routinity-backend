@@ -33,7 +33,12 @@ function scoreGoal(goal: Goal, logs: RoutineLog[]): ScoreEntry {
 }
 
 function scoreWakeTime(goal: Goal, logs: RoutineLog[]): ScoreEntry {
-  const wakeLog = logs.find((log) => log.type === "wake");
+  // Postgres doesn't guarantee row order without ORDER BY, and a day can have
+  // more than one "wake" log (correction, snooze, etc.) — always take the
+  // earliest by timestamp rather than whichever the DB happened to return first.
+  const wakeLog = logs
+    .filter((log) => log.type === "wake")
+    .sort((a, b) => a.timestamp.localeCompare(b.timestamp))[0];
   if (!wakeLog) {
     return {
       target_type: goal.target_type,

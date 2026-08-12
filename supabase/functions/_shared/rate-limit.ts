@@ -10,7 +10,8 @@ export interface RateLimitDecision {
 
 export function evaluateRateLimit(result: RateLimitResult): RateLimitDecision | null {
   if (result.error) {
-    return { status: 500, body: { error: result.error.message } };
+    console.error(result.error.message);
+    return { status: 500, body: { error: "internal server error" } };
   }
   if (result.data === false) {
     return { status: 429, body: { error: "rate limit exceeded, try again later" } };

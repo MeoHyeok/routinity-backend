@@ -11,6 +11,13 @@ const TARGET_VALUE_FORMATS: Record<string, RegExp> = {
   study_duration: /^[1-9]\d*$/,
 };
 
+// target_type is intentionally free-form (future goal types shouldn't need a
+// migration), but it's still unauthenticated user input going straight into a
+// row key — cap the length so a user can't balloon storage with huge strings
+// or an unbounded number of distinct target_type rows.
+const MAX_TARGET_TYPE_LENGTH = 50;
+const MAX_TARGET_VALUE_LENGTH = 200;
+
 export default {
   fetch: withSupabase({ auth: "user" }, async (req, ctx) => {
     const rateLimited = await enforceRateLimit(ctx.supabase, "goals", 20, 60);
@@ -33,6 +40,18 @@ export default {
       if (!body.target_value || typeof body.target_value !== "string") {
         return Response.json(
           { error: "target_value is required" },
+          { status: 400 },
+        );
+      }
+      if (body.target_type.length > MAX_TARGET_TYPE_LENGTH) {
+        return Response.json(
+          { error: `target_type must be at most ${MAX_TARGET_TYPE_LENGTH} characters` },
+          { status: 400 },
+        );
+      }
+      if (body.target_value.length > MAX_TARGET_VALUE_LENGTH) {
+        return Response.json(
+          { error: `target_value must be at most ${MAX_TARGET_VALUE_LENGTH} characters` },
           { status: 400 },
         );
       }

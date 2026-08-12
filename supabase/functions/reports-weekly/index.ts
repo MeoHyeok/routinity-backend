@@ -104,7 +104,8 @@ export default {
         .from("routine_logs")
         .select("type, timestamp")
         .gte("timestamp", weekStart)
-        .lt("timestamp", weekEnd),
+        .lt("timestamp", weekEnd)
+        .order("timestamp", { ascending: true }),
     ]);
 
     if (goalsResult.error) {
@@ -137,6 +138,28 @@ export default {
       .single();
 
     if (insert.error) {
+      // A concurrent request for the same user can win the "cache miss" race
+      // and insert first; the DB's one-report-per-UTC-day unique constraint
+      // then rejects this insert. Rather than 500, return what the other
+      // request already cached instead of forcing the client to retry.
+      if (insert.error.code === "23505") {
+        const raced = await ctx.supabase
+          .from("ai_reports")
+          .select("content")
+          .eq("period", "weekly")
+          .gte("created_at", todayStart)
+          .lt("created_at", todayEnd)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (raced.data) {
+          return Response.json(
+            { period: "weekly", content: raced.data.content, cached: true },
+            { status: 200 },
+          );
+        }
+      }
       return serverError(insert.error);
     }
 
