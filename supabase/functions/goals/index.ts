@@ -1,16 +1,19 @@
 import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
 import { enforceRateLimit } from "../_shared/rate-limit.ts";
+import { serverError } from "../_shared/errors.ts";
+
+// wake_time/study_duration은 scoring.ts와 weekly-report.ts가 특정 형식을
+// 가정하고 파싱하므로(HH:MM 비교, 분 단위 정수), 여기서 미리 형식을 강제해
+// 채점이 조용히 틀어지는 걸 막는다. 그 외 target_type은 자유 문자열 허용.
+const TARGET_VALUE_FORMATS: Record<string, RegExp> = {
+  wake_time: /^([01]\d|2[0-3]):[0-5]\d$/,
+  study_duration: /^[1-9]\d*$/,
+};
 
 export default {
   fetch: withSupabase({ auth: "user" }, async (req, ctx) => {
-    const rateLimited = await enforceRateLimit(
-      ctx.supabase,
-      ctx.userClaims!.id,
-      "goals",
-      20,
-      60,
-    );
+    const rateLimited = await enforceRateLimit(ctx.supabase, "goals", 20, 60);
     if (rateLimited) return rateLimited;
 
     if (req.method === "POST") {
@@ -33,6 +36,18 @@ export default {
           { status: 400 },
         );
       }
+      const format = TARGET_VALUE_FORMATS[body.target_type];
+      if (format && !format.test(body.target_value)) {
+        return Response.json(
+          {
+            error:
+              body.target_type === "wake_time"
+                ? "target_value must be HH:MM (24h)"
+                : "target_value must be a positive integer (minutes)",
+          },
+          { status: 400 },
+        );
+      }
 
       const { data, error } = await ctx.supabase
         .from("goals")
@@ -49,7 +64,7 @@ export default {
         .single();
 
       if (error) {
-        return Response.json({ error: error.message }, { status: 500 });
+        return serverError(error);
       }
       return Response.json(data, { status: 200 });
     }
@@ -61,7 +76,7 @@ export default {
         .order("target_type", { ascending: true });
 
       if (error) {
-        return Response.json({ error: error.message }, { status: 500 });
+        return serverError(error);
       }
       return Response.json(data, { status: 200 });
     }

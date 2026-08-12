@@ -8,6 +8,7 @@ import {
   type DailyScores,
 } from "../_shared/weekly-report.ts";
 import { enforceRateLimit } from "../_shared/rate-limit.ts";
+import { serverError } from "../_shared/errors.ts";
 
 const CLAUDE_MODEL = "claude-haiku-4-5-20251001";
 
@@ -62,7 +63,7 @@ export default {
 
     const userId = ctx.userClaims!.id;
 
-    const rateLimited = await enforceRateLimit(ctx.supabase, userId, "reports-weekly", 10, 60);
+    const rateLimited = await enforceRateLimit(ctx.supabase, "reports-weekly", 10, 60);
     if (rateLimited) return rateLimited;
 
     const today = dateOnly(new Date());
@@ -79,7 +80,7 @@ export default {
       .maybeSingle();
 
     if (cached.error) {
-      return Response.json({ error: cached.error.message }, { status: 500 });
+      return serverError(cached.error);
     }
     if (cached.data) {
       return Response.json(
@@ -107,10 +108,10 @@ export default {
     ]);
 
     if (goalsResult.error) {
-      return Response.json({ error: goalsResult.error.message }, { status: 500 });
+      return serverError(goalsResult.error);
     }
     if (logsResult.error) {
-      return Response.json({ error: logsResult.error.message }, { status: 500 });
+      return serverError(logsResult.error);
     }
 
     const goals: Goal[] = goalsResult.data ?? [];
@@ -136,7 +137,7 @@ export default {
       .single();
 
     if (insert.error) {
-      return Response.json({ error: insert.error.message }, { status: 500 });
+      return serverError(insert.error);
     }
 
     return Response.json(

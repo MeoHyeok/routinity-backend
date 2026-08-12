@@ -90,7 +90,9 @@ Content-Type: application/json
 ```
 
 - `target_type`: 문자열, 필수. `wake_time`, `study_duration` 등 — 고정 enum 아님, 새로운 타입 자유롭게 추가 가능
-- `target_value`: 문자열, 필수 (숫자/시간 등 어떤 값이든 문자열로 전달)
+- `target_value`: 문자열, 필수. `wake_time`/`study_duration`는 채점 로직이 파싱 가능한 형식을 서버에서 강제함 (그 외 target_type은 형식 제약 없이 임의 문자열 허용):
+  - `wake_time`: `HH:MM` 24시간제 (예: `"07:00"`). 형식 아니면 400 `{ "error": "target_value must be HH:MM (24h)" }`
+  - `study_duration`: 1 이상 정수 문자열, 분 단위 (예: `"60"`). 아니면 400 `{ "error": "target_value must be a positive integer (minutes)" }`
 
 **응답 200** (생성이든 갱신이든 200 — "지금 이 목표값은 이것"이라는 현재 상태 응답이라 201/200 구분 안 함)
 ```json

@@ -24,13 +24,11 @@ interface RpcClient {
 
 export async function enforceRateLimit(
   supabase: RpcClient,
-  userId: string,
   endpoint: string,
   maxRequests: number,
   windowSeconds: number,
 ): Promise<Response | null> {
   const result = await supabase.rpc("check_rate_limit", {
-    p_user_id: userId,
     p_endpoint: endpoint,
     p_max_requests: maxRequests,
     p_window_seconds: windowSeconds,

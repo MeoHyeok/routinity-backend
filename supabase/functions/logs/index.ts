@@ -1,19 +1,14 @@
 import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
 import { enforceRateLimit } from "../_shared/rate-limit.ts";
+import { serverError } from "../_shared/errors.ts";
 
 const ALLOWED_TYPES = new Set(["wake", "meal", "study_start", "study_end"]);
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export default {
   fetch: withSupabase({ auth: "user" }, async (req, ctx) => {
-    const rateLimited = await enforceRateLimit(
-      ctx.supabase,
-      ctx.userClaims!.id,
-      "logs",
-      60,
-      60,
-    );
+    const rateLimited = await enforceRateLimit(ctx.supabase, "logs", 60, 60);
     if (rateLimited) return rateLimited;
 
     if (req.method === "POST") {
@@ -48,7 +43,7 @@ export default {
         .single();
 
       if (error) {
-        return Response.json({ error: error.message }, { status: 500 });
+        return serverError(error);
       }
       return Response.json(data, { status: 201 });
     }
@@ -75,7 +70,7 @@ export default {
         .order("timestamp", { ascending: true });
 
       if (error) {
-        return Response.json({ error: error.message }, { status: 500 });
+        return serverError(error);
       }
       return Response.json(data, { status: 200 });
     }
