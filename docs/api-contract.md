@@ -1,4 +1,4 @@
-# API 계약 — /logs, /goals, /scores, /reports/weekly
+# API 계약 — /logs, /goals, /scores, /reports/weekly, /reports/daily
 
 ROADMAP.md 2번 섹션의 초안을 실제 구현에 맞춰 확정한 문서. 이후 필드명/타입이 바뀌면 팀 채널에 즉시 공지.
 
@@ -13,6 +13,7 @@ ROADMAP.md 2번 섹션의 초안을 실제 구현에 맞춰 확정한 문서. �
   - `/goals`: 20회/분
   - `/scores`: 60회/분
   - `/reports-weekly`: 10회/분 (하루 1회만 실제 생성되고 나머지는 캐시 응답이라 넉넉함)
+  - `/reports-daily`: 10회/분 (동일한 이유)
 
 ## POST /functions/v1/logs
 
@@ -246,6 +247,46 @@ Authorization: Bearer <access_token>
 - 목표 없는 유저는 안내 템플릿 반환
 - 다른 유저의 리포트는 안 보임 (RLS)
 
+---
+
+## GET /functions/v1/reports-daily
+
+오늘(UTC 기준) 목표 달성 현황을 요약한 AI 일간 리포트 조회. 조회 시점에 없으면 생성. `/reports-weekly`와 동일한 정책(하루 1회 생성+캐시, AI 실패 시 템플릿 폴백)을 오늘 하루 범위로 적용한 것 — `date` 쿼리 파라미터는 받지 않고 항상 "오늘" 기준.
+
+**요청 헤더**
+```
+Authorization: Bearer <access_token>
+```
+
+**응답 200 (신규 생성)**
+```json
+{
+  "period": "daily",
+  "date": "2026-08-14",
+  "content": "오늘의 루티니티 리포트\n\n오늘의 루틴 점수: 75점\n\n기상 목표: 목표 07:00, 실제 06:00 — 달성\n공부 시간 목표: 목표 60, 실제 30 — 미달성",
+  "cached": false,
+  "generated_via": "claude" | "template"
+}
+```
+
+**응답 200 (같은 날 재조회 — 캐시됨)**
+```json
+{ "period": "daily", "date": "2026-08-14", "content": "...", "cached": true }
+```
+
+- `date`는 이 리포트가 어느 날짜 기준인지 (weekly엔 없는 필드, daily는 하루 단위라 명시)
+- 하루에 한 번만 생성 — weekly와 같은 `ai_reports` 유니크 인덱스(`user_id, period, UTC 날짜`)로 DB 레벨에서 강제됨. 같은 유저가 같은 날 다시 GET하면 `cached: true`
+- 목표를 하나도 설정 안 했으면 "목표가 없다"는 안내 문구 템플릿 반환 (weekly와 동일 패턴)
+- AI 생성 실패 시 자동 템플릿 폴백, `generated_via`로 경로 확인 가능 — weekly와 동일 로직 공유(`_shared/ai-report.ts`)
+- 리포트 본문에 그날의 `daily_score`(`/scores`와 동일한 계산)와 목표별 상태를 함께 서술
+
+## /reports/daily 동작 확인 완료
+
+- 목표 없는 유저 → 안내 템플릿, `cached: false`
+- 같은 날 재조회 → `cached: true`, 목표를 나중에 추가해도 그날 캐시된 내용 그대로 반환 확인(의도된 동작, weekly와 동일)
+- 목표+로그 있는 유저 → `daily_score`와 목표별 달성/미달성 내용이 실제 데이터와 일치 확인 (예: 기상 달성 + 공부 30/60분 미달 → `daily_score: 75`)
+- `/reports-weekly`를 `_shared/ai-report.ts`(Claude 호출, 날짜 계산)로 리팩터링한 뒤에도 기존 응답이 그대로 나오는 것 회귀 확인
+
 ## 레이트리밋/환경변수 점검 완료 (Day 13-14 착수분)
 
 - **레이트리밋**: `rate_limits` 테이블 + `check_rate_limit()` Postgres 함수(고정 1분 윈도우)를 4개 함수 전부에 연결. 실제 요청으로 검증: DB 함수 자체(작은 한도로 직접 RPC 호출해 3회 통과 후 4회째 차단 확인), `/reports-weekly` 실제 엔드포인트에서 10회 통과 후 11회째 `429` 확인(두 번 재현), 유저별 독립적으로 적용되는 것도 확인
@@ -269,4 +310,4 @@ Authorization: Bearer <access_token>
 
 ## 구현 완료
 
-로드맵의 4개 엔드포인트(`/logs`, `/goals`, `/scores`, `/reports/weekly`) 모두 구현/배포/테스트 완료. 레이트리밋·환경변수 점검도 완료. iOS팀과의 통합 테스트, 프로덕션 배포, 삭제 기능, `daily_score`까지 전부 끝났고 로드맵상 남은 백엔드 작업은 없음. 이후 기능 확장(패턴/인사이트 분석, 일간·월간 리포트, AI 피드백 고도화)은 별도 우선순위로 진행 중.
+로드맵의 4개 엔드포인트(`/logs`, `/goals`, `/scores`, `/reports/weekly`) 모두 구현/배포/테스트 완료. 레이트리밋·환경변수 점검도 완료. iOS팀과의 통합 테스트, 프로덕션 배포, 삭제 기능, `daily_score`, `/reports-daily`까지 전부 끝났고 로드맵상 남은 백엔드 작업은 없음. 이후 기능 확장(패턴/인사이트 분석, AI 피드백 고도화, 월간 리포트)은 별도 우선순위로 진행 중.
