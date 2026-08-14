@@ -177,6 +177,7 @@ Authorization: Bearer <access_token>
 ```json
 {
   "date": "2026-08-10",
+  "daily_score": 50,
   "scores": [
     { "target_type": "wake_time", "target_value": "07:00", "actual_value": "06:50", "status": "achieved" },
     { "target_type": "study_duration", "target_value": "60", "actual_value": "30", "status": "not_achieved" }
@@ -190,12 +191,14 @@ Authorization: Bearer <access_token>
   - `missing`: 그날 관련 로그가 아예 없음 (미달과 구분됨)
 - `actual_value`: `missing`일 땐 항상 `null`
 - 현재 채점 로직은 `target_type`이 `wake_time`(로그의 `wake` 타임스탬프, 목표보다 이르거나 같으면 achieved) / `study_duration`(그날 `study_start`~`study_end` 쌍의 총합(분), 목표 이상이면 achieved)일 때만 동작. 그 외 `target_type`으로 설정한 목표는 `scores` 배열에서 제외됨(아직 채점 규칙 없음)
-- 목표를 하나도 설정 안 한 유저는 `scores: []`
+- 목표를 하나도 설정 안 한 유저는 `scores: []`, `daily_score: null`
+- **`daily_score`** (2026-08-14 추가): 그날 채점 가능한 목표들을 하나의 점수(0~100, 정수)로 합산 — `round(achieved 개수 / (achieved + not_achieved + missing 개수) × 100)`. `missing`도 미달성과 동일하게 0점 처리(루틴을 기록/실행하지 않은 것 자체가 "로스"라는 취지). 채점 가능한 목표가 하나도 없으면(=`scores: []`) `null`
 
 ## /scores 동작 확인 완료 (유닛 테스트 + 실제 요청)
 
 - `supabase/functions/_shared/scoring.ts`의 순수 함수를 `npm test`로 검증: wake_time/study_duration 각각 achieved/not_achieved/missing 3케이스 + 여러 세션 합산 + 미지원 target_type 필터링, 총 8개 테스트 통과
 - 실제 배포본에도 동일 시나리오로 확인: 인증 없음(401), `date` 누락(400), 로그 있는 날짜(achieved+not_achieved), 로그 없는 날짜(둘 다 missing), 목표 없는 유저는 빈 배열
+- `daily_score`: `computeDailyScore` 유닛 테스트 4개(목표 없음→null / 전부 달성→100 / missing 포함→0 / 반올림) + 실제 배포본에서 목표 없음(`null`) → 전부 missing(`0`) → 1개만 달성(`50`) → 전부 달성(`100`) 순서로 라이브 확인
 
 ---
 
@@ -252,6 +255,10 @@ Authorization: Bearer <access_token>
 
 같은 날, `/reports-weekly`의 요일별 집계에서 DB 타임스탬프(`+00:00`)와 내부에서 만든 날짜 경계 문자열(`.000Z`)을 문자열로 비교하던 버그도 발견해 수정 — 자정 정각 로그가 문자열 형식 차이 때문에 하루 전날로 잘못 집계될 수 있었음. epoch 비교로 수정, 응답 포맷 변화 없음.
 
+## 2026-08-14 추가: 통합 루틴 점수 (`daily_score`)
+
+기획 방향("애플워치 수면점수처럼 하루를 하나의 숫자로") 반영. `GET /scores` 응답에 `daily_score` 필드 추가 — 필드 이름/계산 방식(0~100, missing=0점) 모두 iOS팀과 사전 협의 후 확정. 유닛 테스트 4개 + 실제 배포본 라이브 검증(목표 없음→null, 전부 missing→0, 일부 달성→50, 전부 달성→100) 완료. 기존 `date`/`scores` 필드는 그대로라 하위 호환.
+
 ## 구현 완료
 
-로드맵의 4개 엔드포인트(`/logs`, `/goals`, `/scores`, `/reports/weekly`) 모두 구현/배포/테스트 완료. 레이트리밋·환경변수 점검도 완료. iOS팀과의 통합 테스트, 프로덕션 배포, 삭제 기능 추가까지 전부 끝났고 로드맵상 남은 백엔드 작업은 없음.
+로드맵의 4개 엔드포인트(`/logs`, `/goals`, `/scores`, `/reports/weekly`) 모두 구현/배포/테스트 완료. 레이트리밋·환경변수 점검도 완료. iOS팀과의 통합 테스트, 프로덕션 배포, 삭제 기능, `daily_score`까지 전부 끝났고 로드맵상 남은 백엔드 작업은 없음. 이후 기능 확장(패턴/인사이트 분석, 일간·월간 리포트, AI 피드백 고도화)은 별도 우선순위로 진행 중.
