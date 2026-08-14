@@ -12,9 +12,13 @@ export function buildMonthlyTemplateReport(stats: GoalStat[], insights: Insights
     return "최근 한 달은 설정된 목표가 없어 리포트를 생성할 수 없어요. 목표를 설정하면 다음 리포트부터 받아볼 수 있습니다.";
   }
 
+  // Total is each goal's own scored-day count, not the window size — a goal
+  // set partway through the month is only scored from then on (see
+  // goalsExistingBy), so "30일 중" would overstate the denominator.
   const lines = stats.map((s) => {
     const label = TARGET_TYPE_LABEL[s.target_type] ?? s.target_type;
-    return `${label}: 최근 ${MONTHLY_WINDOW_DAYS}일 중 ${s.achieved}일 달성, ${s.not_achieved}일 미달, ${s.missing}일 기록 없음`;
+    const total = s.achieved + s.not_achieved + s.missing;
+    return `${label}: 최근 ${total}일 중 ${s.achieved}일 달성, ${s.not_achieved}일 미달, ${s.missing}일 기록 없음`;
   });
 
   const patternLines = describeInsights(insights);
@@ -26,7 +30,8 @@ export function buildMonthlyTemplateReport(stats: GoalStat[], insights: Insights
 export function buildMonthlyClaudePrompt(stats: GoalStat[], insights: InsightsResult | null = null): string {
   const lines = stats.map((s) => {
     const label = TARGET_TYPE_LABEL[s.target_type] ?? s.target_type;
-    return `- ${label} (목표값: ${s.target_value}): 달성 ${s.achieved}일 / 미달 ${s.not_achieved}일 / 기록없음 ${s.missing}일 (최근 ${MONTHLY_WINDOW_DAYS}일 기준)`;
+    const total = s.achieved + s.not_achieved + s.missing;
+    return `- ${label} (목표값: ${s.target_value}): 달성 ${s.achieved}일 / 미달 ${s.not_achieved}일 / 기록없음 ${s.missing}일 (최근 ${total}일 기준)`;
   });
 
   const patternLines = describeInsights(insights);

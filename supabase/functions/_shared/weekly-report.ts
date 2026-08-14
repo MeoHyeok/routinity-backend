@@ -51,7 +51,11 @@ export function buildTemplateReport(stats: GoalStat[], insights: InsightsResult 
 
   const lines = stats.map((s) => {
     const label = TARGET_TYPE_LABEL[s.target_type] ?? s.target_type;
-    return `${label}: 7일 중 ${s.achieved}일 달성, ${s.not_achieved}일 미달, ${s.missing}일 기록 없음`;
+    // Total is the goal's own scored-day count, not the window size — a
+    // goal set partway through the week is only scored from then on (see
+    // goalsExistingBy), so "7일 중" would overstate the denominator.
+    const total = s.achieved + s.not_achieved + s.missing;
+    return `${label}: ${total}일 중 ${s.achieved}일 달성, ${s.not_achieved}일 미달, ${s.missing}일 기록 없음`;
   });
 
   const patternLines = describeInsights(insights);

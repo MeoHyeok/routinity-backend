@@ -18,6 +18,16 @@ test("buildMonthlyTemplateReport: renders counts over a 30-day window with Korea
   assert.match(report, /5일 기록 없음/);
 });
 
+test("buildMonthlyTemplateReport: the '중' total is the goal's own scored-day count, not the window size", () => {
+  // A goal set partway through the 30-day window is only scored from then
+  // on (goalsExistingBy) — the total here (12) is less than the full window.
+  const report = buildMonthlyTemplateReport([
+    { target_type: "wake_time", target_value: "07:00", achieved: 8, not_achieved: 2, missing: 2 },
+  ]);
+  assert.match(report, /최근 12일 중/);
+  assert.doesNotMatch(report, /최근 30일 중/);
+});
+
 test("buildMonthlyTemplateReport: appends a pattern section when insights are given", () => {
   const report = buildMonthlyTemplateReport(
     [{ target_type: "wake_time", target_value: "07:00", achieved: 20, not_achieved: 5, missing: 5 }],

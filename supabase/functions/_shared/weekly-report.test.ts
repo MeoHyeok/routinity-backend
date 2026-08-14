@@ -53,9 +53,20 @@ test("buildTemplateReport: renders counts per goal with Korean labels", () => {
     { target_type: "wake_time", target_value: "07:00", achieved: 5, not_achieved: 1, missing: 1 },
   ]);
   assert.match(report, /기상 목표/);
+  assert.match(report, /7일 중/);
   assert.match(report, /5일 달성/);
   assert.match(report, /1일 미달/);
   assert.match(report, /1일 기록 없음/);
+});
+
+test("buildTemplateReport: the '중' total is the goal's own scored-day count, not the window size", () => {
+  // A goal set partway through the week is only scored from then on
+  // (goalsExistingBy) — the total here (3) is less than a full week (7).
+  const report = buildTemplateReport([
+    { target_type: "wake_time", target_value: "07:00", achieved: 2, not_achieved: 0, missing: 1 },
+  ]);
+  assert.match(report, /3일 중/);
+  assert.doesNotMatch(report, /7일 중/);
 });
 
 test("buildTemplateReport: no stats returns the no-goals message", () => {
