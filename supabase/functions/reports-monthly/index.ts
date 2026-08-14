@@ -1,6 +1,6 @@
 import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
-import { computeScores, type Goal, type RoutineLog } from "../_shared/scoring.ts";
+import { computeScores, goalsExistingBy, type GoalWithCreatedAt, type RoutineLog } from "../_shared/scoring.ts";
 import { summarizeWeek, type DailyScores } from "../_shared/weekly-report.ts";
 import { buildMonthlyClaudePrompt, buildMonthlyTemplateReport, MONTHLY_WINDOW_DAYS } from "../_shared/monthly-report.ts";
 import { enforceRateLimit } from "../_shared/rate-limit.ts";
@@ -57,7 +57,7 @@ export default {
     const windowStart = dayRange(dateList[0]).start;
 
     const [goalsResult, logsResult] = await Promise.all([
-      ctx.supabase.from("goals").select("target_type, target_value"),
+      ctx.supabase.from("goals").select("target_type, target_value, created_at"),
       ctx.supabase
         .from("routine_logs")
         .select("type, timestamp")
@@ -73,13 +73,16 @@ export default {
       return log(serverError(logsResult.error));
     }
 
-    const goals: Goal[] = goalsResult.data ?? [];
+    const goals: GoalWithCreatedAt[] = goalsResult.data ?? [];
     const allLogs: RoutineLog[] = logsResult.data ?? [];
 
     const dailyScores: DailyScores[] = dateList.map((date) => {
       const { start, end } = dayRange(date);
+      // Only score goals that existed by this day — see goalsExistingBy's
+      // doc comment (same fix applied to /scores, /insights, /reports-weekly).
+      const goalsAsOfDay = goalsExistingBy(goals, end);
       const dayLogs = filterLogsInRange(allLogs, start, end);
-      return { date, scores: computeScores(goals, dayLogs) };
+      return { date, scores: computeScores(goalsAsOfDay, dayLogs) };
     });
 
     const stats = summarizeWeek(dailyScores);

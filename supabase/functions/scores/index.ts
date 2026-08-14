@@ -1,6 +1,6 @@
 import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
-import { computeDailyScore, computeScores } from "../_shared/scoring.ts";
+import { computeDailyScore, computeScores, goalsExistingBy, type GoalWithCreatedAt } from "../_shared/scoring.ts";
 import { enforceRateLimit } from "../_shared/rate-limit.ts";
 import { serverError } from "../_shared/errors.ts";
 import { requestLogger } from "../_shared/log.ts";
@@ -32,7 +32,7 @@ export default {
     ).toISOString();
 
     const [goalsResult, logsResult] = await Promise.all([
-      ctx.supabase.from("goals").select("target_type, target_value"),
+      ctx.supabase.from("goals").select("target_type, target_value, created_at"),
       ctx.supabase
         .from("routine_logs")
         .select("type, timestamp")
@@ -48,7 +48,12 @@ export default {
       return log(serverError(logsResult.error));
     }
 
-    const scores = computeScores(goalsResult.data ?? [], logsResult.data ?? []);
+    const goals: GoalWithCreatedAt[] = goalsResult.data ?? [];
+    // A goal set after this date shouldn't score against it — see the
+    // goalsExistingBy doc comment for why (same fix applied to /insights,
+    // /reports-weekly, /reports-monthly).
+    const goalsAsOfDate = goalsExistingBy(goals, end);
+    const scores = computeScores(goalsAsOfDate, logsResult.data ?? []);
     const daily_score = computeDailyScore(scores);
     return log(Response.json({ date, daily_score, scores }, { status: 200 }));
   }),
