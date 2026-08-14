@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { computeInsights } from "./insights.ts";
+import { computeInsights, describeInsights } from "./insights.ts";
 
 test("computeInsights: no scored days returns empty/null everywhere", () => {
   const result = computeInsights([], "2026-08-14");
@@ -83,4 +83,49 @@ test("computeInsights: a small difference between windows is reported as flat, n
     "2026-08-14",
   );
   assert.equal(result.trend?.direction, "flat");
+});
+
+test("describeInsights: null insights produces no lines", () => {
+  assert.deepEqual(describeInsights(null), []);
+});
+
+test("describeInsights: empty insights (no scored days) produces no lines", () => {
+  assert.deepEqual(
+    describeInsights({ weekday_averages: [], best_weekday: null, worst_weekday: null, trend: null }),
+    [],
+  );
+});
+
+test("describeInsights: skips the best/worst line when only one weekday has data (best === worst)", () => {
+  const lines = describeInsights({
+    weekday_averages: [{ weekday: 5, label: "금", avg_daily_score: 80, days_counted: 2 }],
+    best_weekday: { weekday: 5, label: "금", avg_daily_score: 80 },
+    worst_weekday: { weekday: 5, label: "금", avg_daily_score: 80 },
+    trend: null,
+  });
+  assert.deepEqual(lines, []);
+});
+
+test("describeInsights: describes best/worst weekday and an upward trend", () => {
+  const lines = describeInsights({
+    weekday_averages: [],
+    best_weekday: { weekday: 1, label: "월", avg_daily_score: 90 },
+    worst_weekday: { weekday: 6, label: "토", avg_daily_score: 20 },
+    trend: { direction: "up", recent_avg: 70, previous_avg: 55 },
+  });
+  assert.equal(lines.length, 2);
+  assert.match(lines[0], /월요일.*토요일/);
+  assert.match(lines[1], /올랐어요/);
+  assert.match(lines[1], /55점.*70점/);
+});
+
+test("describeInsights: describes a flat trend without saying up or down", () => {
+  const lines = describeInsights({
+    weekday_averages: [],
+    best_weekday: null,
+    worst_weekday: null,
+    trend: { direction: "flat", recent_avg: 51, previous_avg: 50 },
+  });
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /유지되고 있어요/);
 });

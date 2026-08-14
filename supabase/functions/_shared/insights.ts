@@ -1,4 +1,14 @@
+import {
+  computeDailyScore,
+  computeScores,
+  goalsExistingBy,
+  type GoalWithCreatedAt,
+  type RoutineLog,
+} from "./scoring.ts";
+import { dateOnly, dayRange, filterLogsInRange } from "./ai-report.ts";
+
 const WEEKDAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
+const WINDOW_DAYS = 28;
 
 // Point difference within which two averages are called "flat" rather than
 // up/down — otherwise 1-2 point rounding noise would read as a trend.
@@ -100,4 +110,81 @@ export function computeInsights(days: DayScore[], today: string): InsightsResult
   }
 
   return { weekday_averages, best_weekday, worst_weekday, trend };
+}
+
+export interface LoadInsightsResult {
+  data: InsightsResult | null;
+  error: { message: string } | null;
+}
+
+// Minimal shape of the parts of the Supabase client this needs — the
+// external SDK's client type isn't re-exported anywhere in this codebase for
+// reuse, so callers just pass ctx.supabase (or ctx.supabaseAdmin) as-is.
+// deno-lint-ignore no-explicit-any
+type SupabaseLike = any;
+
+// Shared by /insights and the report endpoints (which enrich their AI
+// prompt/template with the same pattern data) so the fetch-28-days +
+// per-day-score + computeInsights pipeline exists in exactly one place.
+export async function loadInsights(supabase: SupabaseLike, today: string): Promise<LoadInsightsResult> {
+  const { start: todayStart, end: todayEnd } = dayRange(today);
+
+  const dateList: string[] = [];
+  for (let i = WINDOW_DAYS - 1; i >= 0; i--) {
+    dateList.push(dateOnly(new Date(new Date(todayStart).getTime() - i * 24 * 60 * 60 * 1000)));
+  }
+  const windowStart = dayRange(dateList[0]).start;
+
+  const [goalsResult, logsResult] = await Promise.all([
+    supabase.from("goals").select("target_type, target_value, created_at"),
+    supabase
+      .from("routine_logs")
+      .select("type, timestamp")
+      .gte("timestamp", windowStart)
+      .lt("timestamp", todayEnd)
+      .order("timestamp", { ascending: true }),
+  ]);
+
+  if (goalsResult.error) return { data: null, error: goalsResult.error };
+  if (logsResult.error) return { data: null, error: logsResult.error };
+
+  const goals: GoalWithCreatedAt[] = goalsResult.data ?? [];
+  const allLogs: RoutineLog[] = logsResult.data ?? [];
+
+  const dayScores: DayScore[] = dateList.map((date) => {
+    const { start, end } = dayRange(date);
+    const goalsAsOfDay = goalsExistingBy(goals, end);
+    const dayLogs = filterLogsInRange(allLogs, start, end);
+    const scores = computeScores(goalsAsOfDay, dayLogs);
+    return { date, dailyScore: computeDailyScore(scores) };
+  });
+
+  return { data: computeInsights(dayScores, today), error: null };
+}
+
+// 0-2 Korean sentences narrating the pattern data, for splicing into a
+// report's template text or Claude prompt. Shared by weekly-report.ts and
+// daily-report.ts so both cadences describe patterns the same way.
+export function describeInsights(insights: InsightsResult | null): string[] {
+  if (!insights) return [];
+  const lines: string[] = [];
+
+  if (
+    insights.best_weekday &&
+    insights.worst_weekday &&
+    insights.best_weekday.weekday !== insights.worst_weekday.weekday
+  ) {
+    lines.push(
+      `${insights.best_weekday.label}요일에 가장 잘 지키고(평균 ${insights.best_weekday.avg_daily_score}점), ` +
+        `${insights.worst_weekday.label}요일에 가장 많이 놓치는 편이에요(평균 ${insights.worst_weekday.avg_daily_score}점).`,
+    );
+  }
+
+  if (insights.trend) {
+    const { direction, recent_avg, previous_avg } = insights.trend;
+    const verb = direction === "up" ? "올랐어요" : direction === "down" ? "떨어졌어요" : "비슷하게 유지되고 있어요";
+    lines.push(`최근 일주일 평균이 지난주보다 ${verb} (${previous_avg}점 → ${recent_avg}점).`);
+  }
+
+  return lines;
 }

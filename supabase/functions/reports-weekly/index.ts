@@ -11,6 +11,7 @@ import { enforceRateLimit } from "../_shared/rate-limit.ts";
 import { serverError } from "../_shared/errors.ts";
 import { requestLogger } from "../_shared/log.ts";
 import { dateOnly, dayRange, filterLogsInRange, generateWithClaude } from "../_shared/ai-report.ts";
+import { loadInsights } from "../_shared/insights.ts";
 
 export default {
   fetch: withSupabase({ auth: "user" }, async (req, ctx) => {
@@ -84,8 +85,18 @@ export default {
     });
 
     const stats = summarizeWeek(dailyScores);
-    const claudeText = await generateWithClaude(buildClaudePrompt(stats));
-    const content = claudeText ?? buildTemplateReport(stats);
+
+    // Patterns are an enrichment, not core to report generation — if this
+    // fails, log it and fall back to a plain report rather than 500ing the
+    // whole request over it.
+    const insightsResult = await loadInsights(ctx.supabase, today);
+    if (insightsResult.error) {
+      console.error(insightsResult.error.message);
+    }
+    const insights = insightsResult.data;
+
+    const claudeText = await generateWithClaude(buildClaudePrompt(stats, insights));
+    const content = claudeText ?? buildTemplateReport(stats, insights);
     const generatedVia = claudeText ? "claude" : "template";
 
     const insert = await ctx.supabaseAdmin

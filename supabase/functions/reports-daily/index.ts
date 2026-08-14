@@ -3,6 +3,7 @@ import { withSupabase } from "@supabase/server";
 import { computeDailyScore, computeScores, type Goal, type RoutineLog } from "../_shared/scoring.ts";
 import { buildDailyClaudePrompt, buildDailyTemplateReport } from "../_shared/daily-report.ts";
 import { dateOnly, dayRange, generateWithClaude } from "../_shared/ai-report.ts";
+import { loadInsights } from "../_shared/insights.ts";
 import { enforceRateLimit } from "../_shared/rate-limit.ts";
 import { serverError } from "../_shared/errors.ts";
 import { requestLogger } from "../_shared/log.ts";
@@ -65,8 +66,17 @@ export default {
 
     const scores = computeScores(goals, logs);
     const dailyScore = computeDailyScore(scores);
-    const claudeText = await generateWithClaude(buildDailyClaudePrompt(scores, dailyScore));
-    const content = claudeText ?? buildDailyTemplateReport(scores, dailyScore);
+
+    // Same enrichment-not-core rationale as /reports-weekly: don't fail the
+    // whole report over a pattern-lookup error.
+    const insightsResult = await loadInsights(ctx.supabase, today);
+    if (insightsResult.error) {
+      console.error(insightsResult.error.message);
+    }
+    const insights = insightsResult.data;
+
+    const claudeText = await generateWithClaude(buildDailyClaudePrompt(scores, dailyScore, insights));
+    const content = claudeText ?? buildDailyTemplateReport(scores, dailyScore, insights);
     const generatedVia = claudeText ? "claude" : "template";
 
     const insert = await ctx.supabaseAdmin

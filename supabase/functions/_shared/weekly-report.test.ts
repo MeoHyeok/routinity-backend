@@ -62,3 +62,24 @@ test("buildTemplateReport: no stats returns the no-goals message", () => {
   const report = buildTemplateReport([]);
   assert.match(report, /목표가 없어/);
 });
+
+test("buildTemplateReport: appends a pattern section when insights are given", () => {
+  const report = buildTemplateReport(
+    [{ target_type: "wake_time", target_value: "07:00", achieved: 5, not_achieved: 1, missing: 1 }],
+    {
+      weekday_averages: [],
+      best_weekday: { weekday: 1, label: "월", avg_daily_score: 90 },
+      worst_weekday: { weekday: 6, label: "토", avg_daily_score: 20 },
+      trend: null,
+    },
+  );
+  assert.match(report, /패턴 분석/);
+  assert.match(report, /월요일/);
+});
+
+test("buildTemplateReport: omits the pattern section when insights are null", () => {
+  const report = buildTemplateReport([
+    { target_type: "wake_time", target_value: "07:00", achieved: 5, not_achieved: 1, missing: 1 },
+  ]);
+  assert.doesNotMatch(report, /패턴 분석/);
+});
