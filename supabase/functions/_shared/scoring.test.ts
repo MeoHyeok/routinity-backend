@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { computeDailyScore, computeScores } from "./scoring.ts";
+import { computeDailyScore, computeScores, goalsExistingBy } from "./scoring.ts";
 
 test("wake_time: achieved when actual wake time is at or before target", () => {
   const goals = [{ target_type: "wake_time", target_value: "07:00" }];
@@ -156,4 +156,20 @@ test("computeDailyScore: mixed achieved + partial credit rounds a fractional ave
   ];
   // (1 + 25/60) / 2 * 100 = 70.8333... -> 71
   assert.equal(computeDailyScore(scores), 71);
+});
+
+test("goalsExistingBy: excludes a goal created on or after the cutoff", () => {
+  const goals = [
+    { target_type: "wake_time", target_value: "07:00", created_at: "2026-08-10T00:00:00.000Z" },
+  ];
+  assert.deepEqual(goalsExistingBy(goals, "2026-08-10T00:00:00.000Z"), []);
+  assert.equal(goalsExistingBy(goals, "2026-08-11T00:00:00.000Z").length, 1);
+});
+
+test("goalsExistingBy: compares parsed instants, not raw strings (DB '+00:00' vs constructed '.000Z')", () => {
+  const goals = [
+    { target_type: "wake_time", target_value: "07:00", created_at: "2026-08-09T23:59:00+00:00" },
+  ];
+  // Same instant either way this is written; must resolve as "before" the cutoff.
+  assert.equal(goalsExistingBy(goals, "2026-08-10T00:00:00.000Z").length, 1);
 });

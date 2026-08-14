@@ -5,6 +5,10 @@ export interface Goal {
   target_value: string;
 }
 
+export interface GoalWithCreatedAt extends Goal {
+  created_at: string;
+}
+
 export interface RoutineLog {
   type: string;
   timestamp: string;
@@ -23,6 +27,17 @@ export const TARGET_TYPE_LABEL: Record<string, string> = {
   wake_time: "기상 목표",
   study_duration: "공부 시간 목표",
 };
+
+// A goal shouldn't count against a day before the user set it — otherwise a
+// day before the goal existed reads as "not logged" (0 credit) instead of
+// being excluded, which skews any aggregate spanning more than a few days
+// (see /insights). Compares parsed epoch ms, not raw strings: DB timestamps
+// and constructed cutoffs don't share a string format (same class of bug as
+// the reports-weekly midnight-boundary fix).
+export function goalsExistingBy(goals: GoalWithCreatedAt[], cutoffISO: string): Goal[] {
+  const cutoffMs = new Date(cutoffISO).getTime();
+  return goals.filter((g) => new Date(g.created_at).getTime() < cutoffMs);
+}
 
 export function computeScores(goals: Goal[], logs: RoutineLog[]): ScoreEntry[] {
   return goals
