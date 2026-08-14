@@ -123,9 +123,12 @@ export default {
 
     const dailyScores: DailyScores[] = dateList.map((date) => {
       const { start, end } = dayRange(date);
-      const dayLogs = allLogs.filter(
-        (log) => log.timestamp >= start && log.timestamp < end,
-      );
+      const startMs = new Date(start).getTime();
+      const endMs = new Date(end).getTime();
+      const dayLogs = allLogs.filter((log) => {
+        const t = new Date(log.timestamp).getTime();
+        return t >= startMs && t < endMs;
+      });
       return { date, scores: computeScores(goals, dayLogs) };
     });
 
