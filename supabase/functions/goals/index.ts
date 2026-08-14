@@ -103,6 +103,30 @@ export default {
       return log(Response.json(data, { status: 200 }));
     }
 
+    if (req.method === "DELETE") {
+      const targetType = new URL(req.url).searchParams.get("target_type");
+      if (!targetType) {
+        return log(Response.json(
+          { error: "target_type query param is required" },
+          { status: 400 },
+        ));
+      }
+
+      const { data, error } = await ctx.supabase
+        .from("goals")
+        .delete()
+        .eq("target_type", targetType)
+        .select("id");
+
+      if (error) {
+        return log(serverError(error));
+      }
+      if (!data || data.length === 0) {
+        return log(Response.json({ error: "goal not found" }, { status: 404 }));
+      }
+      return log(new Response(null, { status: 204 }));
+    }
+
     return log(Response.json({ error: "method not allowed" }, { status: 405 }));
   }),
 };

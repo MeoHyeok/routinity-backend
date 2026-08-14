@@ -6,6 +6,7 @@ import { requestLogger } from "../_shared/log.ts";
 
 const ALLOWED_TYPES = new Set(["wake", "meal", "study_start", "study_end"]);
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export default {
   fetch: withSupabase({ auth: "user" }, async (req, ctx) => {
@@ -76,6 +77,30 @@ export default {
         return log(serverError(error));
       }
       return log(Response.json(data, { status: 200 }));
+    }
+
+    if (req.method === "DELETE") {
+      const id = new URL(req.url).searchParams.get("id");
+      if (!id || !UUID_RE.test(id)) {
+        return log(Response.json(
+          { error: "id query param is required and must be a uuid" },
+          { status: 400 },
+        ));
+      }
+
+      const { data, error } = await ctx.supabase
+        .from("routine_logs")
+        .delete()
+        .eq("id", id)
+        .select("id");
+
+      if (error) {
+        return log(serverError(error));
+      }
+      if (!data || data.length === 0) {
+        return log(Response.json({ error: "log not found" }, { status: 404 }));
+      }
+      return log(new Response(null, { status: 204 }));
     }
 
     return log(Response.json({ error: "method not allowed" }, { status: 405 }));

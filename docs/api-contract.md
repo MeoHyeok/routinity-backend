@@ -64,6 +64,19 @@ Authorization: Bearer <access_token>
 
 시간순 정렬. 해당 날짜에 로그가 없으면 빈 배열.
 
+## DELETE /functions/v1/logs?id=&lt;uuid&gt;
+
+잘못 기록한 로그 삭제. `id`는 `POST`/`GET /logs` 응답의 `id` 값(uuid).
+
+**요청 헤더**
+```
+Authorization: Bearer <access_token>
+```
+
+- `id` 쿼리 파라미터 필수 (uuid 형식 아니면 400)
+- 삭제 성공 시 **204 No Content** (바디 없음)
+- 존재하지 않거나 본인 소유가 아니면 **404** `{ "error": "log not found" }` — 다른 유저의 로그 id를 넣어도 RLS로 인해 항상 404 (존재 여부 자체를 노출하지 않음)
+
 ## /logs 동작 확인 완료
 
 - 인증 없는 요청 → 401
@@ -71,6 +84,7 @@ Authorization: Bearer <access_token>
 - 잘못된 `type` → 400
 - 날짜 필터링 정상 동작
 - 다른 유저의 로그는 절대 보이지 않음 (RLS로 서버에서 강제)
+- `DELETE`: `id` 없음 → 400 / 존재하지 않는 id → 404 / 본인 로그 삭제 → 204 후 재조회 시 사라짐 확인 / 다른 유저가 내 로그 id로 삭제 시도 → 404(성공 안 함, RLS 확인) / 삭제된 id로 재삭제 시도 → 404
 
 ---
 
@@ -123,6 +137,19 @@ Authorization: Bearer <access_token>
 
 `target_type` 기준 정렬. 설정한 목표가 없으면 빈 배열.
 
+## DELETE /functions/v1/goals?target_type=&lt;string&gt;
+
+목표 추적 중단(완전 삭제). `target_value`만 덮어쓰는 POST와 달리 row 자체를 지운다 — 삭제 후 같은 target_type으로 다시 POST하면 새 id로 새로 생성됨.
+
+**요청 헤더**
+```
+Authorization: Bearer <access_token>
+```
+
+- `target_type` 쿼리 파라미터 필수 (없으면 400)
+- 삭제 성공 시 **204 No Content** (바디 없음)
+- 해당 target_type의 목표가 없으면 **404** `{ "error": "goal not found" }` (다른 유저 소유인 경우도 RLS로 동일하게 404)
+
 ## /goals 동작 확인 완료
 
 - 인증 없는 요청 → 401
@@ -131,6 +158,7 @@ Authorization: Bearer <access_token>
 - 필수 필드 누락 → 400
 - GET이 해당 유저의 모든 목표를 배열로 반환
 - 다른 유저의 목표는 절대 보이지 않음 (RLS)
+- `DELETE`: `target_type` 없음 → 400 / 없는 target_type → 404 / 존재하는 목표 삭제 → 204 후 재조회 시 사라짐 확인
 
 ---
 
@@ -214,6 +242,16 @@ Authorization: Bearer <access_token>
 - **레이트리밋**: `rate_limits` 테이블 + `check_rate_limit()` Postgres 함수(고정 1분 윈도우)를 4개 함수 전부에 연결. 실제 요청으로 검증: DB 함수 자체(작은 한도로 직접 RPC 호출해 3회 통과 후 4회째 차단 확인), `/reports-weekly` 실제 엔드포인트에서 10회 통과 후 11회째 `429` 확인(두 번 재현), 유저별 독립적으로 적용되는 것도 확인
 - **환경변수**: `.env`/`.env.local`이 git에 커밋된 적 없음, git history 전체에 service_role/Anthropic 키 노출 없음(anon key만 있고 이건 iOS 공유용으로 의도된 것), 함수 코드에 하드코딩된 시크릿 없음, Supabase 프로젝트 시크릿은 플랫폼 자동 주입분만 존재 확인. `ANTHROPIC_API_KEY`는 여전히 미설정 상태(템플릿 폴백으로 정상 동작 중이며, 실제 Claude 응답을 보려면 별도로 시크릿 등록 필요)
 
+## 2026-08-14 추가: 삭제 기능
+
+로드맵 원안에는 없었지만 iOS팀 요청으로 추가:
+- `DELETE /logs?id=<uuid>` — 잘못 기록한 로그 삭제
+- `DELETE /goals?target_type=<string>` — 목표 추적 중단(완전 삭제)
+
+둘 다 RLS delete 정책 추가(`routine_logs_delete_own`, `goals_delete_own`) 후 실제 테스트 계정 2개로 라이브 검증: 정상 삭제(204), 없는 리소스(404), 필수 파라미터 누락(400), 다른 유저 소유 리소스 삭제 시도가 항상 404로 막히는 것(RLS)까지 확인하고 배포 완료.
+
+같은 날, `/reports-weekly`의 요일별 집계에서 DB 타임스탬프(`+00:00`)와 내부에서 만든 날짜 경계 문자열(`.000Z`)을 문자열로 비교하던 버그도 발견해 수정 — 자정 정각 로그가 문자열 형식 차이 때문에 하루 전날로 잘못 집계될 수 있었음. epoch 비교로 수정, 응답 포맷 변화 없음.
+
 ## 구현 완료
 
-로드맵의 4개 엔드포인트(`/logs`, `/goals`, `/scores`, `/reports/weekly`) 모두 구현/배포/테스트 완료. 레이트리밋·환경변수 점검도 완료. 남은 건 iOS팀과의 통합 테스트와 프로덕션 배포 (로드맵 11-14일차).
+로드맵의 4개 엔드포인트(`/logs`, `/goals`, `/scores`, `/reports/weekly`) 모두 구현/배포/테스트 완료. 레이트리밋·환경변수 점검도 완료. iOS팀과의 통합 테스트, 프로덕션 배포, 삭제 기능 추가까지 전부 끝났고 로드맵상 남은 백엔드 작업은 없음.
