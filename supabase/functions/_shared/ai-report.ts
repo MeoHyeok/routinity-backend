@@ -10,6 +10,24 @@ export function dayRange(date: string): { start: string; end: string } {
   return { start, end };
 }
 
+// DB timestamps (Postgres "+00:00" suffix, variable fractional-second digits)
+// and constructed range boundaries (always ".000Z") don't share a string
+// format, so comparing them as raw strings can misorder values that are
+// exactly equal instants (see the reports-weekly midnight-boundary fix) —
+// always compare parsed epoch ms instead.
+export function filterLogsInRange<T extends { timestamp: string }>(
+  logs: T[],
+  start: string,
+  end: string,
+): T[] {
+  const startMs = new Date(start).getTime();
+  const endMs = new Date(end).getTime();
+  return logs.filter((log) => {
+    const t = new Date(log.timestamp).getTime();
+    return t >= startMs && t < endMs;
+  });
+}
+
 export async function generateWithClaude(prompt: string): Promise<string | null> {
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!apiKey) return null;

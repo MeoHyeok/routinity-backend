@@ -10,7 +10,7 @@ import {
 import { enforceRateLimit } from "../_shared/rate-limit.ts";
 import { serverError } from "../_shared/errors.ts";
 import { requestLogger } from "../_shared/log.ts";
-import { dateOnly, dayRange, generateWithClaude } from "../_shared/ai-report.ts";
+import { dateOnly, dayRange, filterLogsInRange, generateWithClaude } from "../_shared/ai-report.ts";
 
 export default {
   fetch: withSupabase({ auth: "user" }, async (req, ctx) => {
@@ -79,12 +79,7 @@ export default {
 
     const dailyScores: DailyScores[] = dateList.map((date) => {
       const { start, end } = dayRange(date);
-      const startMs = new Date(start).getTime();
-      const endMs = new Date(end).getTime();
-      const dayLogs = allLogs.filter((log) => {
-        const t = new Date(log.timestamp).getTime();
-        return t >= startMs && t < endMs;
-      });
+      const dayLogs = filterLogsInRange(allLogs, start, end);
       return { date, scores: computeScores(goals, dayLogs) };
     });
 
