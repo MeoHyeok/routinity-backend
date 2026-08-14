@@ -110,10 +110,9 @@ test("computeDailyScore: all achieved is 100", () => {
   assert.equal(computeDailyScore(scores), 100);
 });
 
-test("computeDailyScore: missing counts as a miss, same as not_achieved", () => {
+test("computeDailyScore: missing always contributes zero credit (no data to judge closeness)", () => {
   const scores = [
-    { target_type: "wake_time", target_value: "07:00", actual_value: "07:30", status: "not_achieved" as const },
-    { target_type: "study_duration", target_value: "60", actual_value: null, status: "missing" as const },
+    { target_type: "wake_time", target_value: "07:00", actual_value: null, status: "missing" as const },
   ];
   assert.equal(computeDailyScore(scores), 0);
 });
@@ -125,4 +124,36 @@ test("computeDailyScore: rounds to nearest integer", () => {
     { target_type: "c", target_value: "1", actual_value: null, status: "missing" as const },
   ];
   assert.equal(computeDailyScore(scores), 33);
+});
+
+test("computeDailyScore: study_duration not_achieved earns proportional partial credit", () => {
+  const scores = [
+    { target_type: "study_duration", target_value: "60", actual_value: "30", status: "not_achieved" as const },
+  ];
+  assert.equal(computeDailyScore(scores), 50);
+});
+
+test("computeDailyScore: wake_time not_achieved credit decays with how late it was", () => {
+  const scores = [
+    { target_type: "wake_time", target_value: "07:00", actual_value: "07:30", status: "not_achieved" as const },
+  ];
+  // 30 min late out of a 120 min grace window -> 75% credit
+  assert.equal(computeDailyScore(scores), 75);
+});
+
+test("computeDailyScore: wake_time credit floors at 0 once past the grace window", () => {
+  const scores = [
+    { target_type: "wake_time", target_value: "07:00", actual_value: "10:00", status: "not_achieved" as const },
+  ];
+  // 180 min late > 120 min grace window
+  assert.equal(computeDailyScore(scores), 0);
+});
+
+test("computeDailyScore: mixed achieved + partial credit rounds a fractional average", () => {
+  const scores = [
+    { target_type: "wake_time", target_value: "07:00", actual_value: "06:50", status: "achieved" as const },
+    { target_type: "study_duration", target_value: "60", actual_value: "25", status: "not_achieved" as const },
+  ];
+  // (1 + 25/60) / 2 * 100 = 70.8333... -> 71
+  assert.equal(computeDailyScore(scores), 71);
 });

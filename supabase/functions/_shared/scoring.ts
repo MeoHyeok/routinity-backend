@@ -57,12 +57,44 @@ function scoreWakeTime(goal: Goal, logs: RoutineLog[]): ScoreEntry {
   };
 }
 
-// missing counts as a miss, same as not_achieved — not logging the routine
-// is the exact "loss" the score is meant to surface, not a neutral outcome.
+// How many minutes late a wake_time can be before its partial credit bottoms
+// out at 0 — a somewhat arbitrary grace window, tunable if the score feels
+// too harsh/lenient in practice.
+const WAKE_TIME_LATE_GRACE_MINUTES = 120;
+
+function timeToMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(":").map(Number);
+  return h * 60 + m;
+}
+
+// Per-goal credit in [0, 1]. `missing` always gets 0 — there's no data to
+// judge closeness by, so no partial credit. `not_achieved` gets partial
+// credit based on how close the actual value came to the target, so the
+// daily score isn't just achieved-goal-count/total (which only ever lands
+// on a handful of coarse values when there are just 1-2 scorable goals).
+function scoreCredit(score: ScoreEntry): number {
+  if (score.status === "achieved") return 1;
+  if (score.status === "missing" || score.actual_value === null) return 0;
+
+  if (score.target_type === "study_duration") {
+    const actual = Number(score.actual_value);
+    const target = Number(score.target_value);
+    if (!Number.isFinite(actual) || !Number.isFinite(target) || target <= 0) return 0;
+    return Math.max(0, Math.min(actual / target, 1));
+  }
+
+  if (score.target_type === "wake_time") {
+    const lateMinutes = timeToMinutes(score.actual_value) - timeToMinutes(score.target_value);
+    return Math.max(0, 1 - lateMinutes / WAKE_TIME_LATE_GRACE_MINUTES);
+  }
+
+  return 0;
+}
+
 export function computeDailyScore(scores: ScoreEntry[]): number | null {
   if (scores.length === 0) return null;
-  const achieved = scores.filter((s) => s.status === "achieved").length;
-  return Math.round((achieved / scores.length) * 100);
+  const total = scores.reduce((sum, s) => sum + scoreCredit(s), 0);
+  return Math.round((total / scores.length) * 100);
 }
 
 function scoreStudyDuration(goal: Goal, logs: RoutineLog[]): ScoreEntry {
