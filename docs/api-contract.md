@@ -192,13 +192,19 @@ Authorization: Bearer <access_token>
 - `actual_value`: `missing`일 땐 항상 `null`
 - 현재 채점 로직은 `target_type`이 `wake_time`(로그의 `wake` 타임스탬프, 목표보다 이르거나 같으면 achieved) / `study_duration`(그날 `study_start`~`study_end` 쌍의 총합(분), 목표 이상이면 achieved)일 때만 동작. 그 외 `target_type`으로 설정한 목표는 `scores` 배열에서 제외됨(아직 채점 규칙 없음)
 - 목표를 하나도 설정 안 한 유저는 `scores: []`, `daily_score: null`
-- **`daily_score`** (2026-08-14 추가): 그날 채점 가능한 목표들을 하나의 점수(0~100, 정수)로 합산 — `round(achieved 개수 / (achieved + not_achieved + missing 개수) × 100)`. `missing`도 미달성과 동일하게 0점 처리(루틴을 기록/실행하지 않은 것 자체가 "로스"라는 취지). 채점 가능한 목표가 하나도 없으면(=`scores: []`) `null`
+- **`daily_score`** (2026-08-14 추가, 같은 날 부분점수 방식으로 개선): 그날 채점 가능한 목표들의 "목표별 근접도(0~1)"를 평균 내서 0~100 정수로 변환 — `round(목표별 credit 합 / 목표 개수 × 100)`. 목표별 credit:
+  - `achieved` → 항상 1 (초과 달성해도 보너스 없음)
+  - `missing` → 항상 0 (근접했는지 판단할 데이터 자체가 없음)
+  - `study_duration`의 `not_achieved` → `실제 분 / 목표 분` 비율 (예: 60분 목표에 30분 → 0.5)
+  - `wake_time`의 `not_achieved` → 목표시간보다 늦은 정도에 비례해 감소, 120분(2시간) 이상 늦으면 0
+  - 채점 가능한 목표가 하나도 없으면(=`scores: []`) `null`
+  - 목표가 1~2개뿐이라도 부분점수 덕분에 0/50/100처럼 딱 떨어지지 않고 임의의 정수(예: 58)로 나올 수 있음
 
 ## /scores 동작 확인 완료 (유닛 테스트 + 실제 요청)
 
 - `supabase/functions/_shared/scoring.ts`의 순수 함수를 `npm test`로 검증: wake_time/study_duration 각각 achieved/not_achieved/missing 3케이스 + 여러 세션 합산 + 미지원 target_type 필터링, 총 8개 테스트 통과
 - 실제 배포본에도 동일 시나리오로 확인: 인증 없음(401), `date` 누락(400), 로그 있는 날짜(achieved+not_achieved), 로그 없는 날짜(둘 다 missing), 목표 없는 유저는 빈 배열
-- `daily_score`: `computeDailyScore` 유닛 테스트 4개(목표 없음→null / 전부 달성→100 / missing 포함→0 / 반올림) + 실제 배포본에서 목표 없음(`null`) → 전부 missing(`0`) → 1개만 달성(`50`) → 전부 달성(`100`) 순서로 라이브 확인
+- `daily_score`: `computeDailyScore` 유닛 테스트 8개(목표 없음→null / 전부 달성→100 / missing→0 / study_duration 부분점수 / wake_time 부분점수(시간 비례 감소) / wake_time 유예시간 초과 시 0 / 혼합 케이스 반올림) + 실제 배포본에서 목표 없음(`null`) → 전부 missing(`0`) → 1개만 달성(`50`) → 전부 달성(`100`) → 부분점수 혼합 케이스(`58`, 0/50/100 아닌 임의 정수 확인) 순서로 라이브 확인
 
 ---
 
@@ -257,7 +263,9 @@ Authorization: Bearer <access_token>
 
 ## 2026-08-14 추가: 통합 루틴 점수 (`daily_score`)
 
-기획 방향("애플워치 수면점수처럼 하루를 하나의 숫자로") 반영. `GET /scores` 응답에 `daily_score` 필드 추가 — 필드 이름/계산 방식(0~100, missing=0점) 모두 iOS팀과 사전 협의 후 확정. 유닛 테스트 4개 + 실제 배포본 라이브 검증(목표 없음→null, 전부 missing→0, 일부 달성→50, 전부 달성→100) 완료. 기존 `date`/`scores` 필드는 그대로라 하위 호환.
+기획 방향("애플워치 수면점수처럼 하루를 하나의 숫자로") 반영. `GET /scores` 응답에 `daily_score` 필드 추가 — 필드 이름/계산 방식(0~100, missing=0점) 모두 iOS팀과 사전 협의 후 확정. 기존 `date`/`scores` 필드는 그대로라 하위 호환.
+
+**같은 날 추가 보완**: 목표가 1~2개뿐이면 달성 개수 기반 계산이 0/50/100으로만 나오는 문제가 있어, `not_achieved`에도 목표 근접도 기반 부분점수를 주는 방식으로 개선(위 `daily_score` 필드 설명 참고). 유닛 테스트 8개 + 실제 배포본 라이브 검증(목표 없음→null, 전부 missing→0, 일부 달성→50, 전부 달성→100, 부분점수 혼합→58) 완료.
 
 ## 구현 완료
 
