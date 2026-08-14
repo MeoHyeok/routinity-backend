@@ -1,4 +1,4 @@
-# API 계약 — /logs, /goals, /scores, /reports/weekly, /reports/daily, /insights
+# API 계약 — /logs, /goals, /scores, /reports/weekly, /reports/daily, /reports/monthly, /insights
 
 ROADMAP.md 2번 섹션의 초안을 실제 구현에 맞춰 확정한 문서. 이후 필드명/타입이 바뀌면 팀 채널에 즉시 공지.
 
@@ -14,6 +14,7 @@ ROADMAP.md 2번 섹션의 초안을 실제 구현에 맞춰 확정한 문서. �
   - `/scores`: 60회/분
   - `/reports-weekly`: 10회/분 (하루 1회만 실제 생성되고 나머지는 캐시 응답이라 넉넉함)
   - `/reports-daily`: 10회/분 (동일한 이유)
+  - `/reports-monthly`: 10회/분 (동일한 이유)
   - `/insights`: 20회/분
 
 ## POST /functions/v1/logs
@@ -294,6 +295,46 @@ Authorization: Bearer <access_token>
 
 ---
 
+## GET /functions/v1/reports-monthly
+
+최근 30일(캘린더 월이 아니라 롤링 윈도우, UTC 기준) 목표 달성 현황을 요약한 AI 월간 리포트 조회. weekly/daily와 동일하게 조회 시점에 없으면 생성.
+
+**요청 헤더**
+```
+Authorization: Bearer <access_token>
+```
+
+**응답 200 (신규 생성)**
+```json
+{
+  "period": "monthly",
+  "date_range": { "from": "2026-07-16", "to": "2026-08-14" },
+  "content": "최근 한 달 루티니티 리포트\n\n기상 목표: 최근 30일 중 7일 달성, 3일 미달, 20일 기록 없음\n\n패턴 분석\n금요일에 가장 잘 지키고(평균 50점), 화요일에 가장 많이 놓치는 편이에요(평균 0점).\n최근 일주일 평균이 지난주보다 올랐어요 (29점 → 43점).",
+  "cached": false,
+  "generated_via": "claude" | "template"
+}
+```
+
+**응답 200 (같은 날 재조회 — 캐시됨)**
+```json
+{ "period": "monthly", "date_range": { "from": "2026-07-16", "to": "2026-08-14" }, "content": "...", "cached": true }
+```
+
+- **캘린더 월이 아니라 최근 30일 롤링 윈도우** — `/reports-weekly`(최근 7일)/`/reports-daily`(오늘)와 일관되게, 가입한 지 한 달이 안 된 유저에게도 어색한 "이번 달 1~14일치만" 같은 리포트가 아니라 항상 꽉 찬 30일 기준으로 나옴
+- `date_range`는 `/insights`와 같은 필드명(`from`/`to`)
+- 하루에 한 번만 생성 — weekly/daily와 같은 `ai_reports` 유니크 인덱스로 DB 레벨에서 강제. 같은 유저가 같은 날 다시 GET하면 `cached: true`
+- 목표를 하나도 설정 안 했으면 안내 문구 템플릿 반환 (weekly/daily와 동일 패턴)
+- AI 생성 실패 시 자동 템플릿 폴백, `generated_via`로 경로 확인 가능
+- `/insights`와 동일한 패턴(요일별 최고/최악, 최근 트렌드) 반영 — 있으면 "패턴 분석" 섹션 포함
+
+## /reports/monthly 동작 확인 완료
+
+- 목표 없는 유저 → 안내 템플릿, `cached: false`, `date_range`는 30일 폭으로 정상 계산
+- 같은 날 재조회 → `cached: true`
+- 목표+로그(여러 주에 걸쳐 분산) 있는 유저 → 달성/미달/기록없음 카운트 합이 정확히 30일과 일치, 패턴 분석 섹션도 정상 반영 확인
+
+---
+
 ## GET /functions/v1/insights
 
 최근 28일 데이터 기반 요일별 평균 루틴 점수 + 최근 트렌드. 패턴 파악용, AI 리포트와 무관하게 즉시 계산되는 순수 통계 엔드포인트(Claude 호출 없음).
@@ -349,4 +390,4 @@ Authorization: Bearer <access_token>
 
 ## 구현 완료
 
-로드맵의 4개 엔드포인트(`/logs`, `/goals`, `/scores`, `/reports/weekly`) 모두 구현/배포/테스트 완료. 레이트리밋·환경변수 점검도 완료. iOS팀과의 통합 테스트, 프로덕션 배포, 삭제 기능, `daily_score`, `/reports-daily`, `/insights`, 리포트 패턴 반영(AI 피드백 고도화)까지 전부 끝났고 로드맵상 남은 백엔드 작업은 없음. 남은 건 5순위(월간 리포트)뿐.
+로드맵의 4개 엔드포인트(`/logs`, `/goals`, `/scores`, `/reports/weekly`) 모두 구현/배포/테스트 완료. 레이트리밋·환경변수 점검도 완료. iOS팀과의 통합 테스트, 프로덕션 배포, 삭제 기능, `daily_score`, `/reports-daily`, `/insights`, 리포트 패턴 반영(AI 피드백 고도화), `/reports-monthly`까지 전부 끝났고 로드맵상 남은 백엔드 작업은 없음. 기획안이 제시한 5개 우선순위 기능 확장 전부 완료.
