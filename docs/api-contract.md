@@ -1,4 +1,4 @@
-# API 계약 — /logs, /goals, /scores, /reports/weekly, /reports/daily
+# API 계약 — /logs, /goals, /scores, /reports/weekly, /reports/daily, /insights
 
 ROADMAP.md 2번 섹션의 초안을 실제 구현에 맞춰 확정한 문서. 이후 필드명/타입이 바뀌면 팀 채널에 즉시 공지.
 
@@ -14,6 +14,7 @@ ROADMAP.md 2번 섹션의 초안을 실제 구현에 맞춰 확정한 문서. �
   - `/scores`: 60회/분
   - `/reports-weekly`: 10회/분 (하루 1회만 실제 생성되고 나머지는 캐시 응답이라 넉넉함)
   - `/reports-daily`: 10회/분 (동일한 이유)
+  - `/insights`: 20회/분
 
 ## POST /functions/v1/logs
 
@@ -287,6 +288,40 @@ Authorization: Bearer <access_token>
 - 목표+로그 있는 유저 → `daily_score`와 목표별 달성/미달성 내용이 실제 데이터와 일치 확인 (예: 기상 달성 + 공부 30/60분 미달 → `daily_score: 75`)
 - `/reports-weekly`를 `_shared/ai-report.ts`(Claude 호출, 날짜 계산)로 리팩터링한 뒤에도 기존 응답이 그대로 나오는 것 회귀 확인
 
+---
+
+## GET /functions/v1/insights
+
+최근 28일 데이터 기반 요일별 평균 루틴 점수 + 최근 트렌드. 패턴 파악용, AI 리포트와 무관하게 즉시 계산되는 순수 통계 엔드포인트(Claude 호출 없음).
+
+**요청 헤더**
+```
+Authorization: Bearer <access_token>
+```
+
+**응답 200**
+```json
+{
+  "date_range": { "from": "2026-07-18", "to": "2026-08-14" },
+  "weekday_averages": [
+    { "weekday": 5, "label": "금", "avg_daily_score": 100, "days_counted": 1 }
+  ],
+  "best_weekday": { "weekday": 5, "label": "금", "avg_daily_score": 100 },
+  "worst_weekday": { "weekday": 5, "label": "금", "avg_daily_score": 100 },
+  "trend": { "direction": "up", "recent_avg": 70, "previous_avg": 55 }
+}
+```
+
+- `weekday`: 0(일)~6(토), UTC 기준. `weekday_averages`는 요일 오름차순 정렬
+- **집계 대상**: `daily_score`(각 날짜 `/scores`와 동일 계산)가 계산되는 날짜만 포함. 목표를 하나도 설정 안 했으면 전부 제외, **그 목표를 실제로 설정하기 이전 날짜도 제외**(2026-08-14 수정 — 최초에는 이 부분이 빠져서 막 가입한 유저의 지난 27일이 전부 0점으로 잡히는 문제가 있었음, 아래 참고)
+- 요일별 데이터가 하나도 없으면 `weekday_averages: []`, `best_weekday`/`worst_weekday`: `null`
+- `trend`: 최근 7일 평균 vs 그 이전 7일 평균. 두 구간 모두 데이터가 있어야 계산, 하나라도 없으면 `null`. 두 평균 차이가 3점 이하면 `"flat"`(반올림 노이즈로 오인 방지), 그보다 크면 `"up"`/`"down"`
+
+## /insights 동작 확인 완료
+
+- `computeInsights` 유닛 테스트 7개(빈 데이터/null 제외/요일별 평균/최우수·최악 요일/트렌드 null·계산·flat 임계값) + `goalsExistingBy` 유닛 테스트 2개 통과
+- 실제 배포본에서 확인: 목표를 오늘 막 설정한 계정으로 과거 로그를 찍어봤더니 목표 설정 이전 날짜는 전부 집계에서 제외되고 오늘 하루만 반영되는 것 확인. 서비스롤로 목표의 `created_at`을 과거로 되돌려서 여러 주에 걸친 요일별 평균/트렌드 계산이 정확한 것도 재확인
+
 ## 레이트리밋/환경변수 점검 완료 (Day 13-14 착수분)
 
 - **레이트리밋**: `rate_limits` 테이블 + `check_rate_limit()` Postgres 함수(고정 1분 윈도우)를 4개 함수 전부에 연결. 실제 요청으로 검증: DB 함수 자체(작은 한도로 직접 RPC 호출해 3회 통과 후 4회째 차단 확인), `/reports-weekly` 실제 엔드포인트에서 10회 통과 후 11회째 `429` 확인(두 번 재현), 유저별 독립적으로 적용되는 것도 확인
@@ -310,4 +345,4 @@ Authorization: Bearer <access_token>
 
 ## 구현 완료
 
-로드맵의 4개 엔드포인트(`/logs`, `/goals`, `/scores`, `/reports/weekly`) 모두 구현/배포/테스트 완료. 레이트리밋·환경변수 점검도 완료. iOS팀과의 통합 테스트, 프로덕션 배포, 삭제 기능, `daily_score`, `/reports-daily`까지 전부 끝났고 로드맵상 남은 백엔드 작업은 없음. 이후 기능 확장(패턴/인사이트 분석, AI 피드백 고도화, 월간 리포트)은 별도 우선순위로 진행 중.
+로드맵의 4개 엔드포인트(`/logs`, `/goals`, `/scores`, `/reports/weekly`) 모두 구현/배포/테스트 완료. 레이트리밋·환경변수 점검도 완료. iOS팀과의 통합 테스트, 프로덕션 배포, 삭제 기능, `daily_score`, `/reports-daily`, `/insights`까지 전부 끝났고 로드맵상 남은 백엔드 작업은 없음. 이후 기능 확장(AI 피드백 고도화, 월간 리포트)은 별도 우선순위로 진행 중.
