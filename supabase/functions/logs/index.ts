@@ -2,34 +2,37 @@ import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
 import { enforceRateLimit } from "../_shared/rate-limit.ts";
 import { serverError } from "../_shared/errors.ts";
+import { requestLogger } from "../_shared/log.ts";
 
 const ALLOWED_TYPES = new Set(["wake", "meal", "study_start", "study_end"]);
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export default {
   fetch: withSupabase({ auth: "user" }, async (req, ctx) => {
+    const log = requestLogger("logs", req.method);
+
     const rateLimited = await enforceRateLimit(ctx.supabase, "logs", 60, 60);
-    if (rateLimited) return rateLimited;
+    if (rateLimited) return log(rateLimited);
 
     if (req.method === "POST") {
       let body: { type?: string; timestamp?: string };
       try {
         body = await req.json();
       } catch {
-        return Response.json({ error: "invalid JSON body" }, { status: 400 });
+        return log(Response.json({ error: "invalid JSON body" }, { status: 400 }));
       }
 
       if (!body.type || !ALLOWED_TYPES.has(body.type)) {
-        return Response.json(
+        return log(Response.json(
           { error: `type must be one of: ${[...ALLOWED_TYPES].join(", ")}` },
           { status: 400 },
-        );
+        ));
       }
       if (!body.timestamp || Number.isNaN(Date.parse(body.timestamp))) {
-        return Response.json(
+        return log(Response.json(
           { error: "timestamp must be a valid ISO 8601 string" },
           { status: 400 },
-        );
+        ));
       }
 
       const { data, error } = await ctx.supabase
@@ -43,18 +46,18 @@ export default {
         .single();
 
       if (error) {
-        return serverError(error);
+        return log(serverError(error));
       }
-      return Response.json(data, { status: 201 });
+      return log(Response.json(data, { status: 201 }));
     }
 
     if (req.method === "GET") {
       const date = new URL(req.url).searchParams.get("date");
       if (!date || !DATE_RE.test(date)) {
-        return Response.json(
+        return log(Response.json(
           { error: "date query param is required, format YYYY-MM-DD" },
           { status: 400 },
-        );
+        ));
       }
 
       const start = `${date}T00:00:00.000Z`;
@@ -70,11 +73,11 @@ export default {
         .order("timestamp", { ascending: true });
 
       if (error) {
-        return serverError(error);
+        return log(serverError(error));
       }
-      return Response.json(data, { status: 200 });
+      return log(Response.json(data, { status: 200 }));
     }
 
-    return Response.json({ error: "method not allowed" }, { status: 405 });
+    return log(Response.json({ error: "method not allowed" }, { status: 405 }));
   }),
 };

@@ -3,24 +3,27 @@ import { withSupabase } from "@supabase/server";
 import { computeScores } from "../_shared/scoring.ts";
 import { enforceRateLimit } from "../_shared/rate-limit.ts";
 import { serverError } from "../_shared/errors.ts";
+import { requestLogger } from "../_shared/log.ts";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export default {
   fetch: withSupabase({ auth: "user" }, async (req, ctx) => {
+    const log = requestLogger("scores", req.method);
+
     if (req.method !== "GET") {
-      return Response.json({ error: "method not allowed" }, { status: 405 });
+      return log(Response.json({ error: "method not allowed" }, { status: 405 }));
     }
 
     const rateLimited = await enforceRateLimit(ctx.supabase, "scores", 60, 60);
-    if (rateLimited) return rateLimited;
+    if (rateLimited) return log(rateLimited);
 
     const date = new URL(req.url).searchParams.get("date");
     if (!date || !DATE_RE.test(date)) {
-      return Response.json(
+      return log(Response.json(
         { error: "date query param is required, format YYYY-MM-DD" },
         { status: 400 },
-      );
+      ));
     }
 
     const start = `${date}T00:00:00.000Z`;
@@ -39,13 +42,13 @@ export default {
     ]);
 
     if (goalsResult.error) {
-      return serverError(goalsResult.error);
+      return log(serverError(goalsResult.error));
     }
     if (logsResult.error) {
-      return serverError(logsResult.error);
+      return log(serverError(logsResult.error));
     }
 
     const scores = computeScores(goalsResult.data ?? [], logsResult.data ?? []);
-    return Response.json({ date, scores }, { status: 200 });
+    return log(Response.json({ date, scores }, { status: 200 }));
   }),
 };

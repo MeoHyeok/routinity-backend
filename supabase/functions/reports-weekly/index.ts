@@ -9,6 +9,7 @@ import {
 } from "../_shared/weekly-report.ts";
 import { enforceRateLimit } from "../_shared/rate-limit.ts";
 import { serverError } from "../_shared/errors.ts";
+import { requestLogger } from "../_shared/log.ts";
 
 const CLAUDE_MODEL = "claude-haiku-4-5-20251001";
 
@@ -57,14 +58,16 @@ async function generateWithClaude(prompt: string): Promise<string | null> {
 
 export default {
   fetch: withSupabase({ auth: "user" }, async (req, ctx) => {
+    const log = requestLogger("reports-weekly", req.method);
+
     if (req.method !== "GET") {
-      return Response.json({ error: "method not allowed" }, { status: 405 });
+      return log(Response.json({ error: "method not allowed" }, { status: 405 }));
     }
 
     const userId = ctx.userClaims!.id;
 
     const rateLimited = await enforceRateLimit(ctx.supabase, "reports-weekly", 10, 60);
-    if (rateLimited) return rateLimited;
+    if (rateLimited) return log(rateLimited);
 
     const today = dateOnly(new Date());
     const { start: todayStart, end: todayEnd } = dayRange(today);
@@ -80,13 +83,13 @@ export default {
       .maybeSingle();
 
     if (cached.error) {
-      return serverError(cached.error);
+      return log(serverError(cached.error));
     }
     if (cached.data) {
-      return Response.json(
+      return log(Response.json(
         { period: "weekly", content: cached.data.content, cached: true },
         { status: 200 },
-      );
+      ));
     }
 
     const dateList: string[] = [];
@@ -109,10 +112,10 @@ export default {
     ]);
 
     if (goalsResult.error) {
-      return serverError(goalsResult.error);
+      return log(serverError(goalsResult.error));
     }
     if (logsResult.error) {
-      return serverError(logsResult.error);
+      return log(serverError(logsResult.error));
     }
 
     const goals: Goal[] = goalsResult.data ?? [];
@@ -154,18 +157,18 @@ export default {
           .maybeSingle();
 
         if (raced.data) {
-          return Response.json(
+          return log(Response.json(
             { period: "weekly", content: raced.data.content, cached: true },
             { status: 200 },
-          );
+          ));
         }
       }
-      return serverError(insert.error);
+      return log(serverError(insert.error));
     }
 
-    return Response.json(
+    return log(Response.json(
       { period: "weekly", content: insert.data.content, cached: false, generated_via: generatedVia },
       { status: 200 },
-    );
+    ));
   }),
 };
