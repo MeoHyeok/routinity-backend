@@ -1,4 +1,4 @@
-import type { ScoreEntry, ScoreStatus } from "./scoring.ts";
+import { TARGET_TYPE_LABEL, type ScoreEntry, type ScoreStatus } from "./scoring.ts";
 
 export interface DailyScores {
   date: string;
@@ -12,11 +12,6 @@ export interface GoalStat {
   not_achieved: number;
   missing: number;
 }
-
-const TARGET_TYPE_LABEL: Record<string, string> = {
-  wake_time: "기상 목표",
-  study_duration: "공부 시간 목표",
-};
 
 export function summarizeWeek(days: DailyScores[]): GoalStat[] {
   const byType = new Map<string, GoalStat>();

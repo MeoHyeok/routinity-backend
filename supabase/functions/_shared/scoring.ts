@@ -19,6 +19,11 @@ export interface ScoreEntry {
 
 const SCORABLE_TYPES = new Set(["wake_time", "study_duration"]);
 
+export const TARGET_TYPE_LABEL: Record<string, string> = {
+  wake_time: "기상 목표",
+  study_duration: "공부 시간 목표",
+};
+
 export function computeScores(goals: Goal[], logs: RoutineLog[]): ScoreEntry[] {
   return goals
     .filter((goal) => SCORABLE_TYPES.has(goal.target_type))
