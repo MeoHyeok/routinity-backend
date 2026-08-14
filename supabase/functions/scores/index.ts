@@ -1,6 +1,6 @@
 import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
-import { computeScores } from "../_shared/scoring.ts";
+import { computeDailyScore, computeScores } from "../_shared/scoring.ts";
 import { enforceRateLimit } from "../_shared/rate-limit.ts";
 import { serverError } from "../_shared/errors.ts";
 import { requestLogger } from "../_shared/log.ts";
@@ -49,6 +49,7 @@ export default {
     }
 
     const scores = computeScores(goalsResult.data ?? [], logsResult.data ?? []);
-    return log(Response.json({ date, scores }, { status: 200 }));
+    const daily_score = computeDailyScore(scores);
+    return log(Response.json({ date, daily_score, scores }, { status: 200 }));
   }),
 };

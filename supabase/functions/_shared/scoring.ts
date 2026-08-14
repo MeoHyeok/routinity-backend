@@ -57,6 +57,14 @@ function scoreWakeTime(goal: Goal, logs: RoutineLog[]): ScoreEntry {
   };
 }
 
+// missing counts as a miss, same as not_achieved — not logging the routine
+// is the exact "loss" the score is meant to surface, not a neutral outcome.
+export function computeDailyScore(scores: ScoreEntry[]): number | null {
+  if (scores.length === 0) return null;
+  const achieved = scores.filter((s) => s.status === "achieved").length;
+  return Math.round((achieved / scores.length) * 100);
+}
+
 function scoreStudyDuration(goal: Goal, logs: RoutineLog[]): ScoreEntry {
   const targetMinutes = Number(goal.target_value);
   const studyLogs = logs

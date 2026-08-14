@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { computeScores } from "./scoring.ts";
+import { computeDailyScore, computeScores } from "./scoring.ts";
 
 test("wake_time: achieved when actual wake time is at or before target", () => {
   const goals = [{ target_type: "wake_time", target_value: "07:00" }];
@@ -96,4 +96,33 @@ test("study_duration: an unmatched trailing study_start is not counted", () => {
   const [score] = computeScores(goals, logs);
   assert.equal(score.actual_value, "15");
   assert.equal(score.status, "achieved");
+});
+
+test("computeDailyScore: no scorable goals returns null", () => {
+  assert.equal(computeDailyScore([]), null);
+});
+
+test("computeDailyScore: all achieved is 100", () => {
+  const scores = [
+    { target_type: "wake_time", target_value: "07:00", actual_value: "06:50", status: "achieved" as const },
+    { target_type: "study_duration", target_value: "60", actual_value: "60", status: "achieved" as const },
+  ];
+  assert.equal(computeDailyScore(scores), 100);
+});
+
+test("computeDailyScore: missing counts as a miss, same as not_achieved", () => {
+  const scores = [
+    { target_type: "wake_time", target_value: "07:00", actual_value: "07:30", status: "not_achieved" as const },
+    { target_type: "study_duration", target_value: "60", actual_value: null, status: "missing" as const },
+  ];
+  assert.equal(computeDailyScore(scores), 0);
+});
+
+test("computeDailyScore: rounds to nearest integer", () => {
+  const scores = [
+    { target_type: "a", target_value: "1", actual_value: "1", status: "achieved" as const },
+    { target_type: "b", target_value: "1", actual_value: null, status: "missing" as const },
+    { target_type: "c", target_value: "1", actual_value: null, status: "missing" as const },
+  ];
+  assert.equal(computeDailyScore(scores), 33);
 });
