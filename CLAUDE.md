@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-Core backend build is done: all four ROADMAP endpoints are implemented, deployed, and tested, and the Day 13-14 security/ops checklist (RLS, rate limiting, env/secret hygiene) is complete. `ROADMAP.md` is still the source of the original plan and day-by-day timeline; `docs/api-contract.md` is now the authoritative, implementation-accurate API reference (finalized field names/types, confirmed behaviors, verification notes) — prefer it over the ROADMAP's draft endpoint table when the two disagree. Production deploy is done — the project is a hackathon demo, so the Supabase project already in use (`noqvrfewkyfdrsoaszmz`, the one `docs/api-contract.md` gives the iOS team) is confirmed as production; there is no separate prod project to migrate to. Day 11-12 end-to-end integration testing with the iOS team is done (`/goals` upsert, all three `/scores` statuses, `/reports-weekly` generation+cache all verified live in the app, no bugs found). Remaining work per the roadmap: basic logging/monitoring hookup.
+The ROADMAP is fully complete: all four endpoints are implemented, deployed, and tested; the Day 13-14 security/ops checklist (RLS, rate limiting, env/secret hygiene, production deploy, basic logging/monitoring) is done; and Day 11-12 end-to-end integration testing with the iOS team is done (`/goals` upsert, all three `/scores` statuses, `/reports-weekly` generation+cache all verified live in the app, no bugs found). `ROADMAP.md` is still the source of the original plan and day-by-day timeline; `docs/api-contract.md` is now the authoritative, implementation-accurate API reference (finalized field names/types, confirmed behaviors, verification notes) — prefer it over the ROADMAP's draft endpoint table when the two disagree. Production deploy: the project is a hackathon demo, so the Supabase project already in use (`noqvrfewkyfdrsoaszmz`, the one `docs/api-contract.md` gives the iOS team) is confirmed as production; there is no separate prod project to migrate to.
 
 ## Stack
 
@@ -42,7 +42,7 @@ Notifications are deliberately pushed to the iOS client to compute locally rathe
 2. ~~AI feedback (Day 8-10) is the most likely slip point~~ — shipped with the rule-based template fallback as planned.
 3. Push notification logic belongs on iOS, not the backend.
 4. Data-asset/analytics work (referred to as "4단계" in the roadmap) is explicitly out of scope for this sprint.
-5. Remaining: basic logging/monitoring (Day 13-14 tail end). Day 11-12 iOS integration testing and production deploy are both done (see Project status).
+5. All roadmap phases complete, including Day 11-12 iOS integration testing and the Day 13-14 tail end (production deploy, basic logging/monitoring) — see Project status and Security/ops checklist.
 
 ## Security/ops checklist
 
@@ -51,4 +51,4 @@ Per the roadmap's final phase (Day 13-14):
 - [x] API rate limiting — per-user, per-endpoint, fixed 1-minute window via a `check_rate_limit()` Postgres function; limits documented per endpoint in `docs/api-contract.md`
 - [x] Separated environment/secret configuration (`.env`, `.env.example`); verified no secrets ever committed to git history and no hardcoded secrets in function code. `ANTHROPIC_API_KEY` is still unset in this environment (template fallback covers it) — set it to exercise real Claude report generation.
 - [x] Production deploy — confirmed 2026-08-14: `noqvrfewkyfdrsoaszmz` is the production project (hackathon demo, no separate prod project planned); migrations and all 4 Edge Functions verified up to date on it
-- [ ] Basic logging/monitoring hookup — structured per-request log line (endpoint/method/status/latency) added to all 4 functions and unit-tested (`supabase/functions/_shared/log.ts`), but not yet deployed to production
+- [x] Basic logging/monitoring hookup — structured per-request log line (endpoint/method/status/latency) added to all 4 functions (`supabase/functions/_shared/log.ts`), unit-tested, deployed to production (all 4 functions at version 6)
