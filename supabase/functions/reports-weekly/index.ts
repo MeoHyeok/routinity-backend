@@ -12,6 +12,7 @@ import { serverError } from "../_shared/errors.ts";
 import { requestLogger } from "../_shared/log.ts";
 import { dateOnly, dayRange, filterLogsInRange, generateWithClaude } from "../_shared/ai-report.ts";
 import { loadInsights } from "../_shared/insights.ts";
+import { averageDayBreakdowns, computeDayBreakdown } from "../_shared/day-breakdown.ts";
 
 export default {
   fetch: withSupabase({ auth: "user" }, async (req, ctx) => {
@@ -78,14 +79,18 @@ export default {
     const goals: GoalWithCreatedAt[] = goalsResult.data ?? [];
     const allLogs: RoutineLog[] = logsResult.data ?? [];
 
-    const dailyScores: DailyScores[] = dateList.map((date) => {
+    const dailyScores: DailyScores[] = [];
+    const dayBreakdowns = [];
+    for (const date of dateList) {
       const { start, end } = dayRange(date);
+      const dayLogs = filterLogsInRange(allLogs, start, end);
       // Only score goals that existed by this day — see goalsExistingBy's
       // doc comment (same fix applied to /scores, /insights, /reports-monthly).
       const goalsAsOfDay = goalsExistingBy(goals, end);
-      const dayLogs = filterLogsInRange(allLogs, start, end);
-      return { date, scores: computeScores(goalsAsOfDay, dayLogs) };
-    });
+      dailyScores.push({ date, scores: computeScores(goalsAsOfDay, dayLogs) });
+      dayBreakdowns.push(computeDayBreakdown(dayLogs));
+    }
+    const breakdown = averageDayBreakdowns(dayBreakdowns);
 
     const stats = summarizeWeek(dailyScores);
 
@@ -98,8 +103,8 @@ export default {
     }
     const insights = insightsResult.data;
 
-    const claudeText = await generateWithClaude(buildClaudePrompt(stats, insights));
-    const content = claudeText ?? buildTemplateReport(stats, insights);
+    const claudeText = await generateWithClaude(buildClaudePrompt(stats, insights, breakdown));
+    const content = claudeText ?? buildTemplateReport(stats, insights, breakdown);
     const generatedVia = claudeText ? "claude" : "template";
 
     const insert = await ctx.supabaseAdmin

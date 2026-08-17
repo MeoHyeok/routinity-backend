@@ -4,7 +4,10 @@ import { enforceRateLimit } from "../_shared/rate-limit.ts";
 import { serverError } from "../_shared/errors.ts";
 import { requestLogger } from "../_shared/log.ts";
 
-const ALLOWED_TYPES = new Set(["wake", "meal", "study_start", "study_end"]);
+// "meal" (single-point) is deprecated in favor of meal_start/meal_end (a
+// paired duration, like study) — still readable via GET since the DB
+// constraint keeps it valid, just no longer accepted on new POSTs.
+const ALLOWED_TYPES = new Set(["wake", "sleep", "meal_start", "meal_end", "study_start", "study_end"]);
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

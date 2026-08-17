@@ -2,9 +2,21 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildMonthlyClaudePrompt, buildMonthlyTemplateReport } from "./monthly-report.ts";
 
-test("buildMonthlyTemplateReport: no stats returns the no-goals message", () => {
+test("buildMonthlyTemplateReport: no stats and no breakdown returns the no-data message", () => {
   const report = buildMonthlyTemplateReport([]);
-  assert.match(report, /목표가 없어/);
+  assert.match(report, /목표나 기록이 없어/);
+});
+
+test("buildMonthlyTemplateReport: an average breakdown alone (no goals) still produces a report", () => {
+  const report = buildMonthlyTemplateReport([], null, {
+    daysCounted: 20,
+    avgAwakeMinutes: 900,
+    avgMealMinutes: 80,
+    avgStudyMinutes: 45,
+    avgRestMinutes: 775,
+  });
+  assert.doesNotMatch(report, /기록이 없어/);
+  assert.match(report, /일평균 시간 분배/);
 });
 
 test("buildMonthlyTemplateReport: renders counts over a 30-day window with Korean labels", () => {

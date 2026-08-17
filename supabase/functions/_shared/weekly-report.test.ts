@@ -69,9 +69,21 @@ test("buildTemplateReport: the '중' total is the goal's own scored-day count, n
   assert.doesNotMatch(report, /7일 중/);
 });
 
-test("buildTemplateReport: no stats returns the no-goals message", () => {
+test("buildTemplateReport: no stats and no breakdown returns the no-data message", () => {
   const report = buildTemplateReport([]);
-  assert.match(report, /목표가 없어/);
+  assert.match(report, /목표나 기록이 없어/);
+});
+
+test("buildTemplateReport: an average breakdown alone (no goals) still produces a report", () => {
+  const report = buildTemplateReport([], null, {
+    daysCounted: 5,
+    avgAwakeMinutes: 900,
+    avgMealMinutes: 80,
+    avgStudyMinutes: 45,
+    avgRestMinutes: 775,
+  });
+  assert.doesNotMatch(report, /기록이 없어/);
+  assert.match(report, /일평균 시간 분배/);
 });
 
 test("buildTemplateReport: appends a pattern section when insights are given", () => {

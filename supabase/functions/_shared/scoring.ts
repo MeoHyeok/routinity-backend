@@ -117,13 +117,35 @@ export function computeDailyScore(scores: ScoreEntry[]): number | null {
   return Math.round((total / scores.length) * 100);
 }
 
-function scoreStudyDuration(goal: Goal, logs: RoutineLog[]): ScoreEntry {
-  const targetMinutes = Number(goal.target_value);
-  const studyLogs = logs
-    .filter((log) => log.type === "study_start" || log.type === "study_end")
+// Sums the duration between each startType log and the next endType log
+// that follows it (an unmatched trailing start, or an end with no open
+// start, is dropped rather than guessed at). Shared by study_duration
+// scoring and the meal/study totals in computeDayBreakdown.
+export function sumPairedMinutes(logs: RoutineLog[], startType: string, endType: string): number {
+  const relevant = logs
+    .filter((log) => log.type === startType || log.type === endType)
     .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 
-  if (studyLogs.length === 0 || Number.isNaN(targetMinutes)) {
+  let totalMs = 0;
+  let openStart: number | null = null;
+  for (const log of relevant) {
+    const t = new Date(log.timestamp).getTime();
+    if (log.type === startType) {
+      openStart = t;
+    } else if (openStart !== null) {
+      totalMs += t - openStart;
+      openStart = null;
+    }
+  }
+
+  return Math.round(totalMs / 60000);
+}
+
+function scoreStudyDuration(goal: Goal, logs: RoutineLog[]): ScoreEntry {
+  const targetMinutes = Number(goal.target_value);
+  const hasStudyLogs = logs.some((log) => log.type === "study_start" || log.type === "study_end");
+
+  if (!hasStudyLogs || Number.isNaN(targetMinutes)) {
     return {
       target_type: goal.target_type,
       target_value: goal.target_value,
@@ -132,19 +154,7 @@ function scoreStudyDuration(goal: Goal, logs: RoutineLog[]): ScoreEntry {
     };
   }
 
-  let totalMs = 0;
-  let openStart: number | null = null;
-  for (const log of studyLogs) {
-    const t = new Date(log.timestamp).getTime();
-    if (log.type === "study_start") {
-      openStart = t;
-    } else if (openStart !== null) {
-      totalMs += t - openStart;
-      openStart = null;
-    }
-  }
-
-  const actualMinutes = Math.round(totalMs / 60000);
+  const actualMinutes = sumPairedMinutes(logs, "study_start", "study_end");
   return {
     target_type: goal.target_type,
     target_value: goal.target_value,

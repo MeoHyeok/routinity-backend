@@ -2,9 +2,24 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildDailyClaudePrompt, buildDailyTemplateReport } from "./daily-report.ts";
 
-test("buildDailyTemplateReport: no scores returns the no-goals message", () => {
+test("buildDailyTemplateReport: no scores and no breakdown returns the no-data message", () => {
   const report = buildDailyTemplateReport([], null);
-  assert.match(report, /목표가 없어/);
+  assert.match(report, /목표나 기록이 없어/);
+});
+
+test("buildDailyTemplateReport: a day breakdown alone (no goals) still produces a report", () => {
+  const report = buildDailyTemplateReport([], null, null, {
+    wakeTime: "06:50",
+    sleepTime: "23:30",
+    awakeMinutes: 1000,
+    mealMinutes: 90,
+    studyMinutes: 60,
+    restMinutes: 850,
+  });
+  assert.doesNotMatch(report, /기록이 없어/);
+  assert.doesNotMatch(report, /점$/m); // no daily_score line when dailyScore is null
+  assert.match(report, /하루 시간 분배/);
+  assert.match(report, /06:50.*23:30/);
 });
 
 test("buildDailyTemplateReport: renders the daily score and per-goal status with Korean labels", () => {
