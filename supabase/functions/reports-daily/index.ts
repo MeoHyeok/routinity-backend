@@ -2,9 +2,10 @@ import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
 import { computeDailyScore, computeScores, type Goal, type RoutineLog } from "../_shared/scoring.ts";
 import { buildDailyClaudePrompt, buildDailyTemplateReport } from "../_shared/daily-report.ts";
-import { dateOnly, dayRange, generateWithClaude } from "../_shared/ai-report.ts";
+import { dateOnly, dayRange, extractSuggestedAction, generateWithClaude } from "../_shared/ai-report.ts";
 import { loadInsights } from "../_shared/insights.ts";
 import { computeDayBreakdown, toTimeBreakdownField } from "../_shared/day-breakdown.ts";
+import { deriveDailySuggestedAction } from "../_shared/suggested-action.ts";
 import { enforceRateLimit } from "../_shared/rate-limit.ts";
 import { serverError } from "../_shared/errors.ts";
 import { requestLogger } from "../_shared/log.ts";
@@ -27,7 +28,7 @@ export default {
 
     const cached = await ctx.supabase
       .from("ai_reports")
-      .select("content, time_breakdown, created_at")
+      .select("content, time_breakdown, suggested_action, created_at")
       .eq("period", "daily")
       .gte("created_at", todayStart)
       .lt("created_at", todayEnd)
@@ -45,6 +46,7 @@ export default {
           date: today,
           content: cached.data.content,
           time_breakdown: cached.data.time_breakdown,
+          suggested_action: cached.data.suggested_action,
           cached: true,
         },
         { status: 200 },
@@ -83,15 +85,17 @@ export default {
     }
     const insights = insightsResult.data;
 
-    const claudeText = await generateWithClaude(buildDailyClaudePrompt(scores, dailyScore, insights, breakdown));
-    const content = claudeText ?? buildDailyTemplateReport(scores, dailyScore, insights, breakdown);
-    const generatedVia = claudeText ? "claude" : "template";
+    const claudeRaw = await generateWithClaude(buildDailyClaudePrompt(scores, dailyScore, insights, breakdown));
+    const claudeParsed = claudeRaw !== null ? extractSuggestedAction(claudeRaw) : null;
+    const content = claudeParsed?.content ?? buildDailyTemplateReport(scores, dailyScore, insights, breakdown);
+    const generatedVia = claudeRaw !== null ? "claude" : "template";
     const timeBreakdownField = toTimeBreakdownField(breakdown);
+    const suggestedAction = claudeParsed?.suggestedAction ?? deriveDailySuggestedAction(scores);
 
     const insert = await ctx.supabaseAdmin
       .from("ai_reports")
-      .insert({ user_id: userId, period: "daily", content, time_breakdown: timeBreakdownField })
-      .select("content, time_breakdown")
+      .insert({ user_id: userId, period: "daily", content, time_breakdown: timeBreakdownField, suggested_action: suggestedAction })
+      .select("content, time_breakdown, suggested_action")
       .single();
 
     if (insert.error) {
@@ -100,7 +104,7 @@ export default {
       if (insert.error.code === "23505") {
         const raced = await ctx.supabase
           .from("ai_reports")
-          .select("content, time_breakdown")
+          .select("content, time_breakdown, suggested_action")
           .eq("period", "daily")
           .gte("created_at", todayStart)
           .lt("created_at", todayEnd)
@@ -115,6 +119,7 @@ export default {
               date: today,
               content: raced.data.content,
               time_breakdown: raced.data.time_breakdown,
+              suggested_action: raced.data.suggested_action,
               cached: true,
             },
             { status: 200 },
@@ -130,6 +135,7 @@ export default {
         date: today,
         content: insert.data.content,
         time_breakdown: insert.data.time_breakdown,
+        suggested_action: insert.data.suggested_action,
         cached: false,
         generated_via: generatedVia,
       },

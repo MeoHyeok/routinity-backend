@@ -10,9 +10,10 @@ import {
 import { enforceRateLimit } from "../_shared/rate-limit.ts";
 import { serverError } from "../_shared/errors.ts";
 import { requestLogger } from "../_shared/log.ts";
-import { dateOnly, dayRange, filterLogsInRange, generateWithClaude } from "../_shared/ai-report.ts";
+import { dateOnly, dayRange, extractSuggestedAction, filterLogsInRange, generateWithClaude } from "../_shared/ai-report.ts";
 import { loadInsights } from "../_shared/insights.ts";
 import { averageDayBreakdowns, computeDayBreakdown, toAverageTimeBreakdownField } from "../_shared/day-breakdown.ts";
+import { deriveWindowSuggestedAction } from "../_shared/suggested-action.ts";
 
 export default {
   fetch: withSupabase({ auth: "user" }, async (req, ctx) => {
@@ -32,7 +33,7 @@ export default {
 
     const cached = await ctx.supabase
       .from("ai_reports")
-      .select("content, time_breakdown, created_at")
+      .select("content, time_breakdown, suggested_action, created_at")
       .eq("period", "weekly")
       .gte("created_at", todayStart)
       .lt("created_at", todayEnd)
@@ -49,6 +50,7 @@ export default {
           period: "weekly",
           content: cached.data.content,
           time_breakdown: cached.data.time_breakdown,
+          suggested_action: cached.data.suggested_action,
           cached: true,
         },
         { status: 200 },
@@ -108,15 +110,17 @@ export default {
     }
     const insights = insightsResult.data;
 
-    const claudeText = await generateWithClaude(buildClaudePrompt(stats, insights, breakdown));
-    const content = claudeText ?? buildTemplateReport(stats, insights, breakdown);
-    const generatedVia = claudeText ? "claude" : "template";
+    const claudeRaw = await generateWithClaude(buildClaudePrompt(stats, insights, breakdown));
+    const claudeParsed = claudeRaw !== null ? extractSuggestedAction(claudeRaw) : null;
+    const content = claudeParsed?.content ?? buildTemplateReport(stats, insights, breakdown);
+    const generatedVia = claudeRaw !== null ? "claude" : "template";
     const timeBreakdownField = toAverageTimeBreakdownField(breakdown);
+    const suggestedAction = claudeParsed?.suggestedAction ?? deriveWindowSuggestedAction(stats);
 
     const insert = await ctx.supabaseAdmin
       .from("ai_reports")
-      .insert({ user_id: userId, period: "weekly", content, time_breakdown: timeBreakdownField })
-      .select("content, time_breakdown")
+      .insert({ user_id: userId, period: "weekly", content, time_breakdown: timeBreakdownField, suggested_action: suggestedAction })
+      .select("content, time_breakdown, suggested_action")
       .single();
 
     if (insert.error) {
@@ -127,7 +131,7 @@ export default {
       if (insert.error.code === "23505") {
         const raced = await ctx.supabase
           .from("ai_reports")
-          .select("content, time_breakdown")
+          .select("content, time_breakdown, suggested_action")
           .eq("period", "weekly")
           .gte("created_at", todayStart)
           .lt("created_at", todayEnd)
@@ -141,6 +145,7 @@ export default {
               period: "weekly",
               content: raced.data.content,
               time_breakdown: raced.data.time_breakdown,
+              suggested_action: raced.data.suggested_action,
               cached: true,
             },
             { status: 200 },
@@ -155,6 +160,7 @@ export default {
         period: "weekly",
         content: insert.data.content,
         time_breakdown: insert.data.time_breakdown,
+        suggested_action: insert.data.suggested_action,
         cached: false,
         generated_via: generatedVia,
       },

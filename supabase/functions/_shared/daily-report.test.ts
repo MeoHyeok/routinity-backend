@@ -45,6 +45,7 @@ test("buildDailyClaudePrompt: includes the daily score and per-goal lines", () =
   assert.match(prompt, /100점/);
   assert.match(prompt, /기상 목표/);
   assert.match(prompt, /달성/);
+  assert.match(prompt, /ACTION:/);
 });
 
 test("buildDailyTemplateReport: appends a pattern section when insights are given", () => {

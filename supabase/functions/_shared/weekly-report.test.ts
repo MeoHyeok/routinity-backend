@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildTemplateReport, summarizeWeek } from "./weekly-report.ts";
+import { buildClaudePrompt, buildTemplateReport, summarizeWeek } from "./weekly-report.ts";
 
 test("summarizeWeek: aggregates status counts per target_type across days", () => {
   const days = [
@@ -105,4 +105,12 @@ test("buildTemplateReport: omits the pattern section when insights are null", ()
     { target_type: "wake_time", target_value: "07:00", achieved: 5, not_achieved: 1, missing: 1 },
   ]);
   assert.doesNotMatch(report, /패턴 분석/);
+});
+
+test("buildClaudePrompt: includes per-goal lines and the ACTION-line instruction", () => {
+  const prompt = buildClaudePrompt([
+    { target_type: "wake_time", target_value: "07:00", achieved: 5, not_achieved: 1, missing: 1 },
+  ]);
+  assert.match(prompt, /기상 목표/);
+  assert.match(prompt, /ACTION:/);
 });

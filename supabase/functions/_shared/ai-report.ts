@@ -28,6 +28,22 @@ export function filterLogsInRange<T extends { timestamp: string }>(
   });
 }
 
+// Claude prompts (see daily/weekly/monthly-report.ts) are instructed to end
+// their response with a lone "ACTION: ..." line so the one-sentence
+// suggestion can be pulled out as its own field instead of staying buried
+// in free text (that separation is the whole point per the iOS request).
+// If Claude doesn't follow the format, suggestedAction is null and the
+// caller falls back to the rule-based deriveDailySuggestedAction /
+// deriveWindowSuggestedAction.
+export function extractSuggestedAction(text: string): { content: string; suggestedAction: string | null } {
+  const trimmed = text.trimEnd();
+  const lines = trimmed.split("\n");
+  const lastLine = lines[lines.length - 1];
+  const match = lastLine.match(/^ACTION:\s*(.+)$/i);
+  if (!match) return { content: trimmed, suggestedAction: null };
+  return { content: lines.slice(0, -1).join("\n").trimEnd(), suggestedAction: match[1].trim() };
+}
+
 export async function generateWithClaude(prompt: string): Promise<string | null> {
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!apiKey) return null;

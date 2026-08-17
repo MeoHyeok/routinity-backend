@@ -228,6 +228,7 @@ Authorization: Bearer <access_token>
   "period": "weekly",
   "content": "이번 주 루티니티 리포트\n\n기상 목표: 7일 중 2일 달성, 1일 미달, 4일 기록 없음\n공부 시간 목표: 7일 중 1일 달성, 1일 미달, 5일 기록 없음",
   "time_breakdown": { "active_minutes": 1020, "meal_minutes": 30, "study_minutes": 60, "rest_minutes": 930 },
+  "suggested_action": "다음엔 공부 시작 전에 목표 시간만큼 타이머를 맞춰서 공부 시간을 채워보세요.",
   "cached": false,
   "generated_via": "claude" | "template"
 }
@@ -235,10 +236,11 @@ Authorization: Bearer <access_token>
 
 **응답 200 (같은 날 재조회 — 캐시됨)**
 ```json
-{ "period": "weekly", "content": "...", "time_breakdown": { "...": "..." }, "cached": true }
+{ "period": "weekly", "content": "...", "time_breakdown": { "...": "..." }, "suggested_action": "...", "cached": true }
 ```
 
 - **`time_breakdown`** (2026-08-17 추가): daily와 같은 필드/필드명이지만, 여기서는 그 주 동안 기상+취침이 둘 다 있었던 날들의 **일평균**(분 단위). "일평균 시간 분배" 텍스트 섹션과 동일한 값. 그런 날이 하나도 없으면 `null`. daily와 동일하게 생성 시점에 저장되어 캐시 재조회 시 값이 안 바뀜
+- **`suggested_action`** (2026-08-18 추가, iOS 요청 — 리포트 최상단 강조 카드용): 이 사용자의 가장 큰 로스(달성 비율이 가장 낮은 목표) 하나를 짚어 다음에 바로 실천할 수 있는 구체적 행동을 한 문장으로 담은 필드. `content` 본문과 별개로 분리되어 있어(본문에는 중복 포함되지 않음) 텍스트를 파싱하지 않고 그대로 카드에 렌더링할 수 있음. Claude 생성 시엔 프롬프트가 응답 마지막 줄에 `ACTION: ...` 형식을 요청하고 그 줄을 추출해 채움; 그 형식을 따르지 않거나 템플릿 폴백일 땐 룰 기반으로 같은 값을 채움. 채점된 목표가 하나도 없거나(=목표 미설정) 모든 목표를 달성했으면(짚을 로스가 없음) `null`. `time_breakdown`과 동일하게 생성 시점에 저장되어 캐시 재조회 시 값이 안 바뀜
 - 하루에 한 번만 생성. 같은 UTC 날짜에 다시 GET하면 새로 생성하지 않고 `ai_reports`에 저장된 기존 리포트를 그대로 반환 (`cached: true`)
 - 목표도 없고 시간 분배 데이터도 없으면 "목표나 기록이 없다"는 안내 문구를 템플릿으로 반환 (아래 "시간 분배" 참고 — 목표 없이 기상/취침만 기록해도 리포트는 나옴)
 - **AI 생성 실패 시 자동으로 룰 기반 템플릿으로 폴백** (Claude API 키 미설정, 네트워크 오류, API 에러, refusal 전부 포함) — 로드맵 리스크 대응 그대로 구현. `generated_via`로 어느 경로였는지 확인 가능
@@ -285,6 +287,7 @@ Authorization: Bearer <access_token>
   "date": "2026-08-14",
   "content": "오늘의 루티니티 리포트\n\n오늘의 루틴 점수: 75점\n\n기상 목표: 목표 07:00, 실제 06:00 — 달성\n공부 시간 목표: 목표 60, 실제 30 — 미달성",
   "time_breakdown": { "active_minutes": 1020, "meal_minutes": 30, "study_minutes": 60, "rest_minutes": 930 },
+  "suggested_action": "공부 시간이 목표보다 30분 부족했어요. 내일은 공부 시작 전에 타이머를 목표 시간(60분)에 맞춰보세요.",
   "cached": false,
   "generated_via": "claude" | "template"
 }
@@ -292,10 +295,11 @@ Authorization: Bearer <access_token>
 
 **응답 200 (같은 날 재조회 — 캐시됨)**
 ```json
-{ "period": "daily", "date": "2026-08-14", "content": "...", "time_breakdown": { "...": "..." }, "cached": true }
+{ "period": "daily", "date": "2026-08-14", "content": "...", "time_breakdown": { "...": "..." }, "suggested_action": "...", "cached": true }
 ```
 
 - **`time_breakdown`** (2026-08-17 추가, iOS 요청 — "하루를 어떻게 보냈는지" 차트용): 아래 "하루 시간 분배" 텍스트 섹션과 같은 숫자를 분 단위로 구조화한 필드. `{ active_minutes, meal_minutes, study_minutes, rest_minutes }`, 그날 기상+취침이 둘 다 없어서 시간 분배 자체를 계산 못 하면 `null`. **생성 시점에 `content`와 함께 `ai_reports`에 저장**되기 때문에 캐시로 재조회해도(`cached: true`) 그때 계산된 값 그대로 나옴 — 그날 나중에 로그를 더 추가해도 이미 캐시된 리포트의 `time_breakdown`은 안 바뀜(텍스트와 항상 일치하도록 의도된 동작)
+- **`suggested_action`** (2026-08-18 추가, iOS 요청 — 리포트 최상단 강조 카드용): weekly와 동일한 필드/설계(`_shared/suggested-action.ts`, `_shared/ai-report.ts`의 `extractSuggestedAction` 공유) — 오늘 데이터 기준으로 가장 크레딧이 낮은 목표 하나를 골라 구체적 행동 한 문장을 담음. `content`와 별개 필드로, 채점 가능한 목표가 없거나 전부 달성이면 `null`, 생성 시점에 저장되어 캐시 재조회 시 안 바뀜
 - `date`는 이 리포트가 어느 날짜 기준인지 (weekly엔 없는 필드, daily는 하루 단위라 명시)
 - 하루에 한 번만 생성 — weekly와 같은 `ai_reports` 유니크 인덱스(`user_id, period, UTC 날짜`)로 DB 레벨에서 강제됨. 같은 유저가 같은 날 다시 GET하면 `cached: true`
 - 목표도 없고 그날 기상/취침 기록도 없으면 "목표나 기록이 없다"는 안내 문구 템플릿 반환 (weekly와 동일 패턴)
@@ -340,6 +344,7 @@ Authorization: Bearer <access_token>
   "date_range": { "from": "2026-07-16", "to": "2026-08-14" },
   "content": "최근 한 달 루티니티 리포트\n\n기상 목표: 최근 30일 중 7일 달성, 3일 미달, 20일 기록 없음\n\n패턴 분석\n금요일에 가장 잘 지키고(평균 50점), 화요일에 가장 많이 놓치는 편이에요(평균 0점).\n최근 일주일 평균이 지난주보다 올랐어요 (29점 → 43점).",
   "time_breakdown": { "active_minutes": 1020, "meal_minutes": 30, "study_minutes": 60, "rest_minutes": 930 },
+  "suggested_action": "다음엔 알람을 목표 시간보다 10분 일찍 맞춰서 기상 목표 달성률을 높여보세요.",
   "cached": false,
   "generated_via": "claude" | "template"
 }
@@ -347,10 +352,11 @@ Authorization: Bearer <access_token>
 
 **응답 200 (같은 날 재조회 — 캐시됨)**
 ```json
-{ "period": "monthly", "date_range": { "from": "2026-07-16", "to": "2026-08-14" }, "content": "...", "time_breakdown": { "...": "..." }, "cached": true }
+{ "period": "monthly", "date_range": { "from": "2026-07-16", "to": "2026-08-14" }, "content": "...", "time_breakdown": { "...": "..." }, "suggested_action": "...", "cached": true }
 ```
 
 - **`time_breakdown`** (2026-08-17 추가): weekly와 동일 — 30일 중 기상+취침이 둘 다 있었던 날들의 일평균(분 단위), 그런 날이 없으면 `null`, 생성 시점에 저장되어 캐시 재조회 시 안 바뀜
+- **`suggested_action`** (2026-08-18 추가): weekly와 동일 필드/설계 — 30일 집계 기준으로 달성 비율이 가장 낮은 목표를 짚어 행동 한 문장 제안, 채점된 목표가 없거나 전부 달성이면 `null`
 - **캘린더 월이 아니라 최근 30일 롤링 윈도우** — `/reports-weekly`(최근 7일)/`/reports-daily`(오늘)와 일관되게, 가입한 지 한 달이 안 된 유저에게도 어색한 "이번 달 1~14일치만" 같은 리포트가 아니라 항상 꽉 찬 30일 기준으로 나옴
 - `date_range`는 `/insights`와 같은 필드명(`from`/`to`)
 - 하루에 한 번만 생성 — weekly/daily와 같은 `ai_reports` 유니크 인덱스로 DB 레벨에서 강제. 같은 유저가 같은 날 다시 GET하면 `cached: true`
@@ -426,4 +432,4 @@ Authorization: Bearer <access_token>
 
 ## 구현 완료
 
-로드맵의 4개 엔드포인트(`/logs`, `/goals`, `/scores`, `/reports/weekly`) 모두 구현/배포/테스트 완료. 레이트리밋·환경변수 점검도 완료. iOS팀과의 통합 테스트, 프로덕션 배포, 삭제 기능, `daily_score`, `/reports-daily`, `/insights`, 리포트 패턴 반영(AI 피드백 고도화), `/reports-monthly`까지 전부 끝났고 로드맵상 남은 백엔드 작업은 없음. 기획안이 제시한 5개 우선순위 기능 확장 전부 완료. 이후 iOS 요청으로 로그 버튼 개편(`sleep`/`meal_start`/`meal_end`, 하루 시간 분배 리포트 섹션, `time_breakdown` 구조화 필드)도 추가 완료.
+로드맵의 4개 엔드포인트(`/logs`, `/goals`, `/scores`, `/reports/weekly`) 모두 구현/배포/테스트 완료. 레이트리밋·환경변수 점검도 완료. iOS팀과의 통합 테스트, 프로덕션 배포, 삭제 기능, `daily_score`, `/reports-daily`, `/insights`, 리포트 패턴 반영(AI 피드백 고도화), `/reports-monthly`까지 전부 끝났고 로드맵상 남은 백엔드 작업은 없음. 기획안이 제시한 5개 우선순위 기능 확장 전부 완료. 이후 iOS 요청으로 로그 버튼 개편(`sleep`/`meal_start`/`meal_end`, 하루 시간 분배 리포트 섹션, `time_breakdown` 구조화 필드), 그리고 프리스크립티브 피드백을 위한 `suggested_action` 구조화 필드(2026-08-18)도 추가 완료.

@@ -92,7 +92,7 @@ function timeToMinutes(hhmm: string): number {
 // credit based on how close the actual value came to the target, so the
 // daily score isn't just achieved-goal-count/total (which only ever lands
 // on a handful of coarse values when there are just 1-2 scorable goals).
-function scoreCredit(score: ScoreEntry): number {
+export function scoreCredit(score: ScoreEntry): number {
   if (score.status === "achieved") return 1;
   if (score.status === "missing" || score.actual_value === null) return 0;
 

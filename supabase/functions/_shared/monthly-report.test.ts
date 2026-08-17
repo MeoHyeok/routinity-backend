@@ -61,4 +61,5 @@ test("buildMonthlyClaudePrompt: includes the 30-day window and per-goal lines", 
   assert.match(prompt, /한 달\(30일\)/);
   assert.match(prompt, /공부 시간 목표/);
   assert.match(prompt, /최근 30일 기준/);
+  assert.match(prompt, /ACTION:/);
 });
