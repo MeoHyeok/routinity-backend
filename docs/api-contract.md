@@ -227,6 +227,7 @@ Authorization: Bearer <access_token>
 {
   "period": "weekly",
   "content": "이번 주 루티니티 리포트\n\n기상 목표: 7일 중 2일 달성, 1일 미달, 4일 기록 없음\n공부 시간 목표: 7일 중 1일 달성, 1일 미달, 5일 기록 없음",
+  "time_breakdown": { "active_minutes": 1020, "meal_minutes": 30, "study_minutes": 60, "rest_minutes": 930 },
   "cached": false,
   "generated_via": "claude" | "template"
 }
@@ -234,9 +235,10 @@ Authorization: Bearer <access_token>
 
 **응답 200 (같은 날 재조회 — 캐시됨)**
 ```json
-{ "period": "weekly", "content": "...", "cached": true }
+{ "period": "weekly", "content": "...", "time_breakdown": { "...": "..." }, "cached": true }
 ```
 
+- **`time_breakdown`** (2026-08-17 추가): daily와 같은 필드/필드명이지만, 여기서는 그 주 동안 기상+취침이 둘 다 있었던 날들의 **일평균**(분 단위). "일평균 시간 분배" 텍스트 섹션과 동일한 값. 그런 날이 하나도 없으면 `null`. daily와 동일하게 생성 시점에 저장되어 캐시 재조회 시 값이 안 바뀜
 - 하루에 한 번만 생성. 같은 UTC 날짜에 다시 GET하면 새로 생성하지 않고 `ai_reports`에 저장된 기존 리포트를 그대로 반환 (`cached: true`)
 - 목표도 없고 시간 분배 데이터도 없으면 "목표나 기록이 없다"는 안내 문구를 템플릿으로 반환 (아래 "시간 분배" 참고 — 목표 없이 기상/취침만 기록해도 리포트는 나옴)
 - **AI 생성 실패 시 자동으로 룰 기반 템플릿으로 폴백** (Claude API 키 미설정, 네트워크 오류, API 에러, refusal 전부 포함) — 로드맵 리스크 대응 그대로 구현. `generated_via`로 어느 경로였는지 확인 가능
@@ -263,6 +265,7 @@ Authorization: Bearer <access_token>
 - 패턴 반영: 실제 배포본에서 여러 주에 걸친 로그로 "패턴 분석" 섹션이 정확한 요일/점수/트렌드로 렌더링되는 것 확인
 - 목표 소급 적용 수정: 테스트 계정으로 목표를 오늘 막 설정 → "1일 중 0일 달성, 0일 미달, 1일 기록 없음"으로 정확히 나오는 것 확인 (수정 전엔 "7일 중 0일 달성, 0일 미달, 1일 기록 없음"으로 나머지 6일이 실제로는 존재하지도 않았던 목표의 미기록으로 잘못 집계됐음)
 - 시간 분배: 목표를 하나도 설정 안 한 계정으로 기상/식사/공부/취침만 기록 → 안내 문구 대신 "일평균 시간 분배" 섹션만 있는 리포트가 정상 생성되는 것 확인
+- `time_breakdown`: `{ active_minutes: 1020, meal_minutes: 30, study_minutes: 60, rest_minutes: 930 }`으로 "일평균 시간 분배" 텍스트와 정확히 일치하는 것 확인
 
 ---
 
@@ -281,6 +284,7 @@ Authorization: Bearer <access_token>
   "period": "daily",
   "date": "2026-08-14",
   "content": "오늘의 루티니티 리포트\n\n오늘의 루틴 점수: 75점\n\n기상 목표: 목표 07:00, 실제 06:00 — 달성\n공부 시간 목표: 목표 60, 실제 30 — 미달성",
+  "time_breakdown": { "active_minutes": 1020, "meal_minutes": 30, "study_minutes": 60, "rest_minutes": 930 },
   "cached": false,
   "generated_via": "claude" | "template"
 }
@@ -288,9 +292,10 @@ Authorization: Bearer <access_token>
 
 **응답 200 (같은 날 재조회 — 캐시됨)**
 ```json
-{ "period": "daily", "date": "2026-08-14", "content": "...", "cached": true }
+{ "period": "daily", "date": "2026-08-14", "content": "...", "time_breakdown": { "...": "..." }, "cached": true }
 ```
 
+- **`time_breakdown`** (2026-08-17 추가, iOS 요청 — "하루를 어떻게 보냈는지" 차트용): 아래 "하루 시간 분배" 텍스트 섹션과 같은 숫자를 분 단위로 구조화한 필드. `{ active_minutes, meal_minutes, study_minutes, rest_minutes }`, 그날 기상+취침이 둘 다 없어서 시간 분배 자체를 계산 못 하면 `null`. **생성 시점에 `content`와 함께 `ai_reports`에 저장**되기 때문에 캐시로 재조회해도(`cached: true`) 그때 계산된 값 그대로 나옴 — 그날 나중에 로그를 더 추가해도 이미 캐시된 리포트의 `time_breakdown`은 안 바뀜(텍스트와 항상 일치하도록 의도된 동작)
 - `date`는 이 리포트가 어느 날짜 기준인지 (weekly엔 없는 필드, daily는 하루 단위라 명시)
 - 하루에 한 번만 생성 — weekly와 같은 `ai_reports` 유니크 인덱스(`user_id, period, UTC 날짜`)로 DB 레벨에서 강제됨. 같은 유저가 같은 날 다시 GET하면 `cached: true`
 - 목표도 없고 그날 기상/취침 기록도 없으면 "목표나 기록이 없다"는 안내 문구 템플릿 반환 (weekly와 동일 패턴)
@@ -315,6 +320,7 @@ Authorization: Bearer <access_token>
 - 목표+로그 있는 유저 → `daily_score`와 목표별 달성/미달성 내용이 실제 데이터와 일치 확인 (예: 기상 달성 + 공부 30/60분 미달 → `daily_score: 75`)
 - `/reports-weekly`를 `_shared/ai-report.ts`(Claude 호출, 날짜 계산)로 리팩터링한 뒤에도 기존 응답이 그대로 나오는 것 회귀 확인
 - 시간 분배: 목표 없는 계정으로 기상 06:00 → 식사 30분 → 공부 1시간 → 취침 23:00 기록 후 조회 → "활동 시간: 17시간, 휴식 시간: 15시간 30분"으로 정확히 계산되고 목표 없이도 리포트가 정상 생성되는 것 라이브 확인
+- `time_breakdown`: 신규 생성 시 `{ active_minutes: 1020, meal_minutes: 30, study_minutes: 60, rest_minutes: 930 }`로 `content` 텍스트와 정확히 일치, 같은 리포트를 캐시로 재조회해도 동일한 값이 그대로 나오는 것(재계산 안 됨) 확인
 
 ---
 
@@ -333,6 +339,7 @@ Authorization: Bearer <access_token>
   "period": "monthly",
   "date_range": { "from": "2026-07-16", "to": "2026-08-14" },
   "content": "최근 한 달 루티니티 리포트\n\n기상 목표: 최근 30일 중 7일 달성, 3일 미달, 20일 기록 없음\n\n패턴 분석\n금요일에 가장 잘 지키고(평균 50점), 화요일에 가장 많이 놓치는 편이에요(평균 0점).\n최근 일주일 평균이 지난주보다 올랐어요 (29점 → 43점).",
+  "time_breakdown": { "active_minutes": 1020, "meal_minutes": 30, "study_minutes": 60, "rest_minutes": 930 },
   "cached": false,
   "generated_via": "claude" | "template"
 }
@@ -340,9 +347,10 @@ Authorization: Bearer <access_token>
 
 **응답 200 (같은 날 재조회 — 캐시됨)**
 ```json
-{ "period": "monthly", "date_range": { "from": "2026-07-16", "to": "2026-08-14" }, "content": "...", "cached": true }
+{ "period": "monthly", "date_range": { "from": "2026-07-16", "to": "2026-08-14" }, "content": "...", "time_breakdown": { "...": "..." }, "cached": true }
 ```
 
+- **`time_breakdown`** (2026-08-17 추가): weekly와 동일 — 30일 중 기상+취침이 둘 다 있었던 날들의 일평균(분 단위), 그런 날이 없으면 `null`, 생성 시점에 저장되어 캐시 재조회 시 안 바뀜
 - **캘린더 월이 아니라 최근 30일 롤링 윈도우** — `/reports-weekly`(최근 7일)/`/reports-daily`(오늘)와 일관되게, 가입한 지 한 달이 안 된 유저에게도 어색한 "이번 달 1~14일치만" 같은 리포트가 아니라 항상 꽉 찬 30일 기준으로 나옴
 - `date_range`는 `/insights`와 같은 필드명(`from`/`to`)
 - 하루에 한 번만 생성 — weekly/daily와 같은 `ai_reports` 유니크 인덱스로 DB 레벨에서 강제. 같은 유저가 같은 날 다시 GET하면 `cached: true`
@@ -359,6 +367,7 @@ Authorization: Bearer <access_token>
 - 목표 소급 적용 수정: `/reports-weekly`와 동일하게 목표 설정 이전 날짜가 집계에서 제외되고 "N일 중" 표기도 정확하게 줄어드는 것 확인
 - 목표+로그(여러 주에 걸쳐 분산) 있는 유저 → 달성/미달/기록없음 카운트 합이 정확히 30일과 일치, 패턴 분석 섹션도 정상 반영 확인
 - 시간 분배: 목표 없는 계정으로 기상/식사/공부/취침만 기록 → "일평균 시간 분배" 섹션만 있는 리포트가 정상 생성되는 것 확인
+- `time_breakdown`: `{ active_minutes: 1020, meal_minutes: 30, study_minutes: 60, rest_minutes: 930 }`으로 텍스트와 일치하는 것 확인
 
 ---
 
@@ -417,4 +426,4 @@ Authorization: Bearer <access_token>
 
 ## 구현 완료
 
-로드맵의 4개 엔드포인트(`/logs`, `/goals`, `/scores`, `/reports/weekly`) 모두 구현/배포/테스트 완료. 레이트리밋·환경변수 점검도 완료. iOS팀과의 통합 테스트, 프로덕션 배포, 삭제 기능, `daily_score`, `/reports-daily`, `/insights`, 리포트 패턴 반영(AI 피드백 고도화), `/reports-monthly`까지 전부 끝났고 로드맵상 남은 백엔드 작업은 없음. 기획안이 제시한 5개 우선순위 기능 확장 전부 완료.
+로드맵의 4개 엔드포인트(`/logs`, `/goals`, `/scores`, `/reports/weekly`) 모두 구현/배포/테스트 완료. 레이트리밋·환경변수 점검도 완료. iOS팀과의 통합 테스트, 프로덕션 배포, 삭제 기능, `daily_score`, `/reports-daily`, `/insights`, 리포트 패턴 반영(AI 피드백 고도화), `/reports-monthly`까지 전부 끝났고 로드맵상 남은 백엔드 작업은 없음. 기획안이 제시한 5개 우선순위 기능 확장 전부 완료. 이후 iOS 요청으로 로그 버튼 개편(`sleep`/`meal_start`/`meal_end`, 하루 시간 분배 리포트 섹션, `time_breakdown` 구조화 필드)도 추가 완료.
