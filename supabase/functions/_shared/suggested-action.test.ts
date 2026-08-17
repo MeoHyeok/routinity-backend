@@ -22,6 +22,14 @@ test("deriveDailySuggestedAction: picks the worst-scoring goal and names its gap
   assert.match(action!, /120분/);
 });
 
+test("deriveDailySuggestedAction: a missing study_duration goal is worded as 'no log', not a computed gap", () => {
+  const action = deriveDailySuggestedAction([
+    { target_type: "study_duration", target_value: "60", actual_value: null, status: "missing" as const },
+  ]);
+  assert.match(action!, /기록이 없었어요/);
+  assert.doesNotMatch(action!, /분 부족/);
+});
+
 test("deriveDailySuggestedAction: a missing goal outranks a partially-met one", () => {
   const action = deriveDailySuggestedAction([
     { target_type: "study_duration", target_value: "60", actual_value: "50", status: "not_achieved" as const },

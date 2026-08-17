@@ -10,8 +10,14 @@ import type { GoalStat } from "./weekly-report.ts";
 const DAILY_ACTION_BY_TYPE: Record<string, (s: ScoreEntry) => string> = {
   wake_time: () => "내일은 알람을 목표 시간보다 10분 일찍 맞춰서 기상 목표에 여유를 만들어보세요.",
   study_duration: (s) => {
+    // "missing" (actual_value === null) means there's no study log at all,
+    // not that the user studied less than target — a computed gap there
+    // would overstate what's actually known, so word it differently.
+    if (s.actual_value === null) {
+      return "오늘은 공부 기록이 없었어요. 내일은 공부를 시작할 때 공부 시작 버튼부터 눌러보세요.";
+    }
     const target = Number(s.target_value);
-    const actual = s.actual_value === null ? 0 : Number(s.actual_value);
+    const actual = Number(s.actual_value);
     const gap = Number.isFinite(target) && Number.isFinite(actual) ? Math.round(target - actual) : null;
     return gap !== null && gap > 0
       ? `공부 시간이 목표보다 ${gap}분 부족했어요. 내일은 공부 시작 전에 타이머를 목표 시간(${target}분)에 맞춰보세요.`

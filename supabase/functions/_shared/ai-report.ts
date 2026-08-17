@@ -71,7 +71,13 @@ export async function generateWithClaude(prompt: string): Promise<string | null>
     const textBlock = (data.content ?? []).find(
       (b: { type: string }) => b.type === "text",
     );
-    return typeof textBlock?.text === "string" ? textBlock.text : null;
+    if (typeof textBlock?.text !== "string") return null;
+    // An empty/whitespace-only response is treated the same as a failure —
+    // callers use `content ?? templateFallback()`, which only substitutes on
+    // null/undefined, not on "". Without this, a blank Claude response would
+    // ship (and cache) an empty report while still reporting generated_via
+    // inconsistently depending on how each caller checks for failure.
+    return textBlock.text.trim().length > 0 ? textBlock.text : null;
   } catch {
     return null;
   }
