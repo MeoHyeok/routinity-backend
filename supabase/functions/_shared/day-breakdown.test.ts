@@ -6,6 +6,8 @@ import {
   describeAverageBreakdown,
   describeDayBreakdown,
   formatMinutes,
+  toAverageTimeBreakdownField,
+  toTimeBreakdownField,
 } from "./day-breakdown.ts";
 
 test("formatMinutes: renders hours and minutes, omitting a zero part", () => {
@@ -118,4 +120,29 @@ test("describeAverageBreakdown: empty for null, includes the day count", () => {
     avgRestMinutes: 775,
   });
   assert.match(lines[0], /5일 기준/);
+});
+
+test("toTimeBreakdownField: null for null, maps the four minute fields otherwise", () => {
+  assert.equal(toTimeBreakdownField(null), null);
+  const field = toTimeBreakdownField({
+    wakeTime: "06:50",
+    sleepTime: "23:30",
+    awakeMinutes: 1000,
+    mealMinutes: 90,
+    studyMinutes: 60,
+    restMinutes: 850,
+  });
+  assert.deepEqual(field, { active_minutes: 1000, meal_minutes: 90, study_minutes: 60, rest_minutes: 850 });
+});
+
+test("toAverageTimeBreakdownField: null for null, maps the averaged fields otherwise", () => {
+  assert.equal(toAverageTimeBreakdownField(null), null);
+  const field = toAverageTimeBreakdownField({
+    daysCounted: 5,
+    avgAwakeMinutes: 900,
+    avgMealMinutes: 80,
+    avgStudyMinutes: 45,
+    avgRestMinutes: 775,
+  });
+  assert.deepEqual(field, { active_minutes: 900, meal_minutes: 80, study_minutes: 45, rest_minutes: 775 });
 });

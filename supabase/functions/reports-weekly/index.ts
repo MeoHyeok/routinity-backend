@@ -12,7 +12,7 @@ import { serverError } from "../_shared/errors.ts";
 import { requestLogger } from "../_shared/log.ts";
 import { dateOnly, dayRange, filterLogsInRange, generateWithClaude } from "../_shared/ai-report.ts";
 import { loadInsights } from "../_shared/insights.ts";
-import { averageDayBreakdowns, computeDayBreakdown } from "../_shared/day-breakdown.ts";
+import { averageDayBreakdowns, computeDayBreakdown, toAverageTimeBreakdownField } from "../_shared/day-breakdown.ts";
 
 export default {
   fetch: withSupabase({ auth: "user" }, async (req, ctx) => {
@@ -32,7 +32,7 @@ export default {
 
     const cached = await ctx.supabase
       .from("ai_reports")
-      .select("content, created_at")
+      .select("content, time_breakdown, created_at")
       .eq("period", "weekly")
       .gte("created_at", todayStart)
       .lt("created_at", todayEnd)
@@ -45,7 +45,12 @@ export default {
     }
     if (cached.data) {
       return log(Response.json(
-        { period: "weekly", content: cached.data.content, cached: true },
+        {
+          period: "weekly",
+          content: cached.data.content,
+          time_breakdown: cached.data.time_breakdown,
+          cached: true,
+        },
         { status: 200 },
       ));
     }
@@ -106,11 +111,12 @@ export default {
     const claudeText = await generateWithClaude(buildClaudePrompt(stats, insights, breakdown));
     const content = claudeText ?? buildTemplateReport(stats, insights, breakdown);
     const generatedVia = claudeText ? "claude" : "template";
+    const timeBreakdownField = toAverageTimeBreakdownField(breakdown);
 
     const insert = await ctx.supabaseAdmin
       .from("ai_reports")
-      .insert({ user_id: userId, period: "weekly", content })
-      .select("content")
+      .insert({ user_id: userId, period: "weekly", content, time_breakdown: timeBreakdownField })
+      .select("content, time_breakdown")
       .single();
 
     if (insert.error) {
@@ -121,7 +127,7 @@ export default {
       if (insert.error.code === "23505") {
         const raced = await ctx.supabase
           .from("ai_reports")
-          .select("content")
+          .select("content, time_breakdown")
           .eq("period", "weekly")
           .gte("created_at", todayStart)
           .lt("created_at", todayEnd)
@@ -131,7 +137,12 @@ export default {
 
         if (raced.data) {
           return log(Response.json(
-            { period: "weekly", content: raced.data.content, cached: true },
+            {
+              period: "weekly",
+              content: raced.data.content,
+              time_breakdown: raced.data.time_breakdown,
+              cached: true,
+            },
             { status: 200 },
           ));
         }
@@ -140,7 +151,13 @@ export default {
     }
 
     return log(Response.json(
-      { period: "weekly", content: insert.data.content, cached: false, generated_via: generatedVia },
+      {
+        period: "weekly",
+        content: insert.data.content,
+        time_breakdown: insert.data.time_breakdown,
+        cached: false,
+        generated_via: generatedVia,
+      },
       { status: 200 },
     ));
   }),

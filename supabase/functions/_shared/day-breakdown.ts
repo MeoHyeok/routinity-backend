@@ -90,3 +90,31 @@ export function describeAverageBreakdown(avg: AverageBreakdown | null): string[]
     `휴식 시간: 일평균 ${formatMinutes(avg.avgRestMinutes)}`,
   ];
 }
+
+// Structured mirror of describeDayBreakdown/describeAverageBreakdown, for
+// clients that want to chart the split instead of (or alongside) reading the
+// prose — the iOS report screen wants a "how was today spent" chart.
+export interface TimeBreakdownField {
+  active_minutes: number;
+  meal_minutes: number;
+  study_minutes: number;
+  rest_minutes: number;
+}
+
+export function toTimeBreakdownField(b: DayBreakdown | null): TimeBreakdownField | null {
+  if (!b) return null;
+  return { active_minutes: b.awakeMinutes, meal_minutes: b.mealMinutes, study_minutes: b.studyMinutes, rest_minutes: b.restMinutes };
+}
+
+// For /reports-weekly and /reports-monthly: same shape, but each number is
+// the per-day average across the window (matching describeAverageBreakdown),
+// not a single day's actual minutes.
+export function toAverageTimeBreakdownField(avg: AverageBreakdown | null): TimeBreakdownField | null {
+  if (!avg) return null;
+  return {
+    active_minutes: avg.avgAwakeMinutes,
+    meal_minutes: avg.avgMealMinutes,
+    study_minutes: avg.avgStudyMinutes,
+    rest_minutes: avg.avgRestMinutes,
+  };
+}
