@@ -1,31 +1,24 @@
-const CLAUDE_MODEL = "claude-haiku-4-5-20251001";
+import { kstDateOf } from "./day-sessions.ts";
 
+const CLAUDE_MODEL = "claude-haiku-4-5-20251001";
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
+// KST calendar date, not UTC — a UTC calendar day runs 09:00 KST to 09:00
+// KST the next day, which would misattribute a Korean user's early-morning
+// activity (and the "already generated today" cache check) to the previous
+// day. See day-sessions.ts for the log-bucketing counterpart of this fix.
 export function dateOnly(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return kstDateOf(d);
 }
 
+// [start, end) in UTC instants spanning one KST calendar day (`date`,
+// 00:00-24:00 KST). Used for the ai_reports "once per day" cache window —
+// actual log-to-day attribution goes through day-sessions.ts's
+// wake-to-sleep sessions, not this fixed clock boundary.
 export function dayRange(date: string): { start: string; end: string } {
-  const start = `${date}T00:00:00.000Z`;
+  const start = new Date(new Date(`${date}T00:00:00.000Z`).getTime() - KST_OFFSET_MS).toISOString();
   const end = new Date(new Date(start).getTime() + 24 * 60 * 60 * 1000).toISOString();
   return { start, end };
-}
-
-// DB timestamps (Postgres "+00:00" suffix, variable fractional-second digits)
-// and constructed range boundaries (always ".000Z") don't share a string
-// format, so comparing them as raw strings can misorder values that are
-// exactly equal instants (see the reports-weekly midnight-boundary fix) —
-// always compare parsed epoch ms instead.
-export function filterLogsInRange<T extends { timestamp: string }>(
-  logs: T[],
-  start: string,
-  end: string,
-): T[] {
-  const startMs = new Date(start).getTime();
-  const endMs = new Date(end).getTime();
-  return logs.filter((log) => {
-    const t = new Date(log.timestamp).getTime();
-    return t >= startMs && t < endMs;
-  });
 }
 
 // Claude prompts (see daily/weekly/monthly-report.ts) are instructed to end

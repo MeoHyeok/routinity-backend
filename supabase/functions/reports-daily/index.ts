@@ -5,6 +5,7 @@ import { buildDailyClaudePrompt, buildDailyTemplateReport } from "../_shared/dai
 import { dateOnly, dayRange, extractSuggestedAction, generateWithClaude } from "../_shared/ai-report.ts";
 import { loadInsights } from "../_shared/insights.ts";
 import { computeDayBreakdown, toTimeBreakdownField } from "../_shared/day-breakdown.ts";
+import { computeDaySessions, sessionsByDate } from "../_shared/day-sessions.ts";
 import { deriveDailySuggestedAction } from "../_shared/suggested-action.ts";
 import { enforceRateLimit } from "../_shared/rate-limit.ts";
 import { serverError } from "../_shared/errors.ts";
@@ -72,10 +73,16 @@ export default {
 
     const goals: Goal[] = goalsResult.data ?? [];
     const logs: RoutineLog[] = logsResult.data ?? [];
+    // "Today" is the wake-to-sleep session labeled with today's KST date,
+    // not every log that landed within the UTC/KST clock window — see
+    // day-sessions.ts. Still open (no session for `today`) until the user
+    // logs a fresh "wake."
+    const todaySession = sessionsByDate(computeDaySessions(logs)).get(today);
+    const sessionLogs = todaySession?.logs ?? [];
 
-    const scores = computeScores(goals, logs);
+    const scores = computeScores(goals, sessionLogs);
     const dailyScore = computeDailyScore(scores);
-    const breakdown = computeDayBreakdown(logs);
+    const breakdown = computeDayBreakdown(sessionLogs);
 
     // Same enrichment-not-core rationale as /reports-weekly: don't fail the
     // whole report over a pattern-lookup error.

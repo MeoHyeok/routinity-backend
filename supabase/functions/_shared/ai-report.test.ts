@@ -1,6 +1,18 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { extractSuggestedAction } from "./ai-report.ts";
+import { dateOnly, dayRange, extractSuggestedAction } from "./ai-report.ts";
+
+test("dateOnly: an early-morning KST instant is labeled with its KST date, not the earlier UTC date", () => {
+  // 07:00 KST on 2026-08-18 = 22:00 UTC on 2026-08-17 — a UTC-anchored
+  // dateOnly would wrongly say "2026-08-17" here.
+  assert.equal(dateOnly(new Date("2026-08-17T22:00:00.000Z")), "2026-08-18");
+});
+
+test("dayRange: bounds span one KST calendar day (09:00 UTC boundary, not 00:00 UTC)", () => {
+  const { start, end } = dayRange("2026-08-18");
+  assert.equal(start, "2026-08-17T15:00:00.000Z"); // 00:00 KST on 08-18
+  assert.equal(end, "2026-08-18T15:00:00.000Z"); // 00:00 KST on 08-19
+});
 
 test("extractSuggestedAction: strips a trailing ACTION line and returns it separately", () => {
   const { content, suggestedAction } = extractSuggestedAction(

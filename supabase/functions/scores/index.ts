@@ -1,6 +1,8 @@
 import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
 import { computeDailyScore, computeScores, goalsExistingBy, type GoalWithCreatedAt } from "../_shared/scoring.ts";
+import { computeDaySessions, sessionsByDate } from "../_shared/day-sessions.ts";
+import { dayRange } from "../_shared/ai-report.ts";
 import { enforceRateLimit } from "../_shared/rate-limit.ts";
 import { serverError } from "../_shared/errors.ts";
 import { requestLogger } from "../_shared/log.ts";
@@ -26,10 +28,12 @@ export default {
       ));
     }
 
-    const start = `${date}T00:00:00.000Z`;
-    const end = new Date(
-      new Date(start).getTime() + 24 * 60 * 60 * 1000,
-    ).toISOString();
+    // Fetch from this KST day's start through a generous 48h lookahead so a
+    // late sleeper's "sleep" log (possibly well past this day's midnight)
+    // still gets captured — computeDaySessions below picks out exactly the
+    // session that belongs to `date` regardless of how far its close runs.
+    const { start, end: dayEnd } = dayRange(date);
+    const fetchEnd = new Date(new Date(start).getTime() + 48 * 60 * 60 * 1000).toISOString();
 
     const [goalsResult, logsResult] = await Promise.all([
       ctx.supabase.from("goals").select("target_type, target_value, created_at"),
@@ -37,7 +41,7 @@ export default {
         .from("routine_logs")
         .select("type, timestamp")
         .gte("timestamp", start)
-        .lt("timestamp", end)
+        .lt("timestamp", fetchEnd)
         .order("timestamp", { ascending: true }),
     ]);
 
@@ -52,8 +56,9 @@ export default {
     // A goal set after this date shouldn't score against it — see the
     // goalsExistingBy doc comment for why (same fix applied to /insights,
     // /reports-weekly, /reports-monthly).
-    const goalsAsOfDate = goalsExistingBy(goals, end);
-    const scores = computeScores(goalsAsOfDate, logsResult.data ?? []);
+    const goalsAsOfDate = goalsExistingBy(goals, dayEnd);
+    const session = sessionsByDate(computeDaySessions(logsResult.data ?? [])).get(date);
+    const scores = computeScores(goalsAsOfDate, session?.logs ?? []);
     const daily_score = computeDailyScore(scores);
     return log(Response.json({ date, daily_score, scores }, { status: 200 }));
   }),

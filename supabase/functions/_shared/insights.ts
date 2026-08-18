@@ -5,7 +5,8 @@ import {
   type GoalWithCreatedAt,
   type RoutineLog,
 } from "./scoring.ts";
-import { dateOnly, dayRange, filterLogsInRange } from "./ai-report.ts";
+import { dateOnly, dayRange } from "./ai-report.ts";
+import { computeDaySessions, sessionsByDate } from "./day-sessions.ts";
 
 const WEEKDAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
 const WINDOW_DAYS = 28;
@@ -151,10 +152,13 @@ export async function loadInsights(supabase: SupabaseLike, today: string): Promi
   const goals: GoalWithCreatedAt[] = goalsResult.data ?? [];
   const allLogs: RoutineLog[] = logsResult.data ?? [];
 
+  // Bucket by wake-to-sleep session (day-sessions.ts), not a fixed clock
+  // boundary — see reports-weekly for the full rationale.
+  const sessionMap = sessionsByDate(computeDaySessions(allLogs));
+
   const dayScores: DayScore[] = dateList.map((date) => {
-    const { start, end } = dayRange(date);
-    const goalsAsOfDay = goalsExistingBy(goals, end);
-    const dayLogs = filterLogsInRange(allLogs, start, end);
+    const goalsAsOfDay = goalsExistingBy(goals, dayRange(date).end);
+    const dayLogs = sessionMap.get(date)?.logs ?? [];
     const scores = computeScores(goalsAsOfDay, dayLogs);
     return { date, dailyScore: computeDailyScore(scores) };
   });

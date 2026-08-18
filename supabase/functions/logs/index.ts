@@ -3,6 +3,7 @@ import { withSupabase } from "@supabase/server";
 import { enforceRateLimit } from "../_shared/rate-limit.ts";
 import { serverError } from "../_shared/errors.ts";
 import { requestLogger } from "../_shared/log.ts";
+import { dayRange } from "../_shared/ai-report.ts";
 
 // "meal" (single-point) is deprecated in favor of meal_start/meal_end (a
 // paired duration, like study) — still readable via GET since the DB
@@ -64,10 +65,9 @@ export default {
         ));
       }
 
-      const start = `${date}T00:00:00.000Z`;
-      const end = new Date(
-        new Date(start).getTime() + 24 * 60 * 60 * 1000,
-      ).toISOString();
+      // KST calendar day, not UTC — a UTC day runs 09:00-09:00 KST, which
+      // would silently drop a Korean user's pre-9am logs from "today."
+      const { start, end } = dayRange(date);
 
       const { data, error } = await ctx.supabase
         .from("routine_logs")

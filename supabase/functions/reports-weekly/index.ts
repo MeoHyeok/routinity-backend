@@ -10,9 +10,10 @@ import {
 import { enforceRateLimit } from "../_shared/rate-limit.ts";
 import { serverError } from "../_shared/errors.ts";
 import { requestLogger } from "../_shared/log.ts";
-import { dateOnly, dayRange, extractSuggestedAction, filterLogsInRange, generateWithClaude } from "../_shared/ai-report.ts";
+import { dateOnly, dayRange, extractSuggestedAction, generateWithClaude } from "../_shared/ai-report.ts";
 import { loadInsights } from "../_shared/insights.ts";
 import { averageDayBreakdowns, computeDayBreakdown, toAverageTimeBreakdownField } from "../_shared/day-breakdown.ts";
+import { computeDaySessions, sessionsByDate } from "../_shared/day-sessions.ts";
 import { deriveWindowSuggestedAction } from "../_shared/suggested-action.ts";
 
 export default {
@@ -86,14 +87,18 @@ export default {
     const goals: GoalWithCreatedAt[] = goalsResult.data ?? [];
     const allLogs: RoutineLog[] = logsResult.data ?? [];
 
+    // Bucket by wake-to-sleep session (day-sessions.ts), not a fixed clock
+    // boundary — a late sleeper's post-midnight "sleep" log still closes the
+    // same session their "wake" opened instead of splitting onto the next day.
+    const sessionMap = sessionsByDate(computeDaySessions(allLogs));
+
     const dailyScores: DailyScores[] = [];
     const dayBreakdowns = [];
     for (const date of dateList) {
-      const { start, end } = dayRange(date);
-      const dayLogs = filterLogsInRange(allLogs, start, end);
+      const dayLogs = sessionMap.get(date)?.logs ?? [];
       // Only score goals that existed by this day — see goalsExistingBy's
       // doc comment (same fix applied to /scores, /insights, /reports-monthly).
-      const goalsAsOfDay = goalsExistingBy(goals, end);
+      const goalsAsOfDay = goalsExistingBy(goals, dayRange(date).end);
       dailyScores.push({ date, scores: computeScores(goalsAsOfDay, dayLogs) });
       dayBreakdowns.push(computeDayBreakdown(dayLogs));
     }
