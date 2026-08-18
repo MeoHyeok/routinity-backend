@@ -5,7 +5,7 @@ import { buildDailyClaudePrompt, buildDailyTemplateReport } from "../_shared/dai
 import { dateOnly, dayRange, extractSuggestedAction, generateWithClaude } from "../_shared/ai-report.ts";
 import { loadInsights } from "../_shared/insights.ts";
 import { computeDayBreakdown, toTimeBreakdownField } from "../_shared/day-breakdown.ts";
-import { computeDaySessions, sessionsByDate } from "../_shared/day-sessions.ts";
+import { computeDaySessions, resolveTodaySession } from "../_shared/day-sessions.ts";
 import { deriveDailySuggestedAction } from "../_shared/suggested-action.ts";
 import { enforceRateLimit } from "../_shared/rate-limit.ts";
 import { serverError } from "../_shared/errors.ts";
@@ -41,6 +41,11 @@ export default {
       return log(serverError(cached.error));
     }
     if (cached.data) {
+      // `date` here is the wall-clock KST day, not necessarily the day the
+      // cached content is about — see the resolveTodaySession note below.
+      // Only mismatches in the narrow case where a spilled-over session's
+      // report was generated and then re-fetched from cache later the same
+      // KST day; the `content` text itself is unaffected either way.
       return log(Response.json(
         {
           period: "daily",
@@ -54,12 +59,21 @@ export default {
       ));
     }
 
+    // Fetch from yesterday's KST midnight, not today's — otherwise a
+    // session that opened yesterday and just closed with a post-midnight
+    // `sleep` (the documented "sleep log -> immediately fetch today's
+    // report" client trigger) would have its wake fall outside the window,
+    // leaving nothing but an orphaned sleep log for resolveTodaySession to
+    // work with. See day-sessions.ts.
+    const yesterday = dateOnly(new Date(new Date(todayStart).getTime() - 1));
+    const fetchStart = dayRange(yesterday).start;
+
     const [goalsResult, logsResult] = await Promise.all([
       ctx.supabase.from("goals").select("target_type, target_value"),
       ctx.supabase
         .from("routine_logs")
         .select("type, timestamp")
-        .gte("timestamp", todayStart)
+        .gte("timestamp", fetchStart)
         .lt("timestamp", todayEnd)
         .order("timestamp", { ascending: true }),
     ]);
@@ -73,12 +87,15 @@ export default {
 
     const goals: Goal[] = goalsResult.data ?? [];
     const logs: RoutineLog[] = logsResult.data ?? [];
-    // "Today" is the wake-to-sleep session labeled with today's KST date,
-    // not every log that landed within the UTC/KST clock window — see
-    // day-sessions.ts. Still open (no session for `today`) until the user
-    // logs a fresh "wake."
-    const todaySession = sessionsByDate(computeDaySessions(logs)).get(today);
-    const sessionLogs = todaySession?.logs ?? [];
+    // "Today" is normally the wake-to-sleep session labeled with today's
+    // KST date, not every log that landed within the clock window — see
+    // day-sessions.ts. resolveTodaySession also covers the late-sleeper
+    // trigger case (session opened yesterday, closed by a sleep logged
+    // after today's KST midnight) by falling back to that session and
+    // reporting its date instead of today's.
+    const resolved = resolveTodaySession(computeDaySessions(logs), today, new Date(todayStart).getTime());
+    const reportDate = resolved?.date ?? today;
+    const sessionLogs = resolved?.session.logs ?? [];
 
     const scores = computeScores(goals, sessionLogs);
     const dailyScore = computeDailyScore(scores);
@@ -86,7 +103,7 @@ export default {
 
     // Same enrichment-not-core rationale as /reports-weekly: don't fail the
     // whole report over a pattern-lookup error.
-    const insightsResult = await loadInsights(ctx.supabase, today);
+    const insightsResult = await loadInsights(ctx.supabase, reportDate);
     if (insightsResult.error) {
       console.error(insightsResult.error.message);
     }
@@ -123,7 +140,7 @@ export default {
           return log(Response.json(
             {
               period: "daily",
-              date: today,
+              date: reportDate,
               content: raced.data.content,
               time_breakdown: raced.data.time_breakdown,
               suggested_action: raced.data.suggested_action,
@@ -139,7 +156,7 @@ export default {
     return log(Response.json(
       {
         period: "daily",
-        date: today,
+        date: reportDate,
         content: insert.data.content,
         time_breakdown: insert.data.time_breakdown,
         suggested_action: insert.data.suggested_action,

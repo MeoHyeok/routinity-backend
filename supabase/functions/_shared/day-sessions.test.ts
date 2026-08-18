@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { computeDaySessions, kstDateOf, sessionsByDate } from "./day-sessions.ts";
+import { computeDaySessions, kstDateOf, resolveTodaySession, sessionsByDate } from "./day-sessions.ts";
 import type { RoutineLog } from "./scoring.ts";
 
 function log(type: string, timestamp: string): RoutineLog {
@@ -96,4 +96,72 @@ test("sessionsByDate: looks up a session by its KST date label", () => {
   const map = sessionsByDate(computeDaySessions(logs));
   assert.equal(map.get("2026-08-18")?.closed, true);
   assert.equal(map.get("2026-08-19"), undefined);
+});
+
+test("computeDaySessions: a wake more than 24h after the one that opened the current session starts a fresh session instead of folding in", () => {
+  const logs = [
+    log("wake", "2026-08-17T22:00:00.000Z"), // 08-18 07:00 KST — never sleeps
+    log("study_start", "2026-08-18T00:00:00.000Z"),
+    log("study_end", "2026-08-18T01:00:00.000Z"),
+    log("wake", "2026-08-19T22:30:00.000Z"), // 08-20 07:30 KST — > 24h after the first wake
+    log("sleep", "2026-08-20T12:00:00.000Z"),
+  ];
+  const sessions = computeDaySessions(logs);
+  assert.equal(sessions.length, 2);
+  assert.equal(sessions[0].date, "2026-08-18");
+  assert.equal(sessions[0].closed, false);
+  assert.equal(sessions[0].logs.length, 3); // wake + the study pair, not the later wake/sleep
+  assert.equal(sessions[1].date, "2026-08-20");
+  assert.equal(sessions[1].closed, true);
+});
+
+test("computeDaySessions: a wake within 24h still folds into the open session even without a sleep in between", () => {
+  const logs = [
+    log("wake", "2026-08-18T00:00:00.000Z"),
+    log("wake", "2026-08-18T20:00:00.000Z"), // 20h later — a very long day, not a new one
+    log("sleep", "2026-08-19T02:00:00.000Z"),
+  ];
+  const sessions = computeDaySessions(logs);
+  assert.equal(sessions.length, 1);
+  assert.equal(sessions[0].logs.length, 3);
+});
+
+test("resolveTodaySession: a session that opened and closed today is used directly", () => {
+  const logs = [log("wake", "2026-08-17T22:00:00.000Z"), log("sleep", "2026-08-18T09:00:00.000Z")];
+  const sessions = computeDaySessions(logs);
+  const todayStartMs = new Date("2026-08-17T15:00:00.000Z").getTime(); // 00:00 KST 08-18
+  const resolved = resolveTodaySession(sessions, "2026-08-18", todayStartMs);
+  assert.equal(resolved?.date, "2026-08-18");
+});
+
+test("resolveTodaySession: falls back to yesterday's session when its sleep log spilled past today's KST midnight", () => {
+  // wake 08:00 KST 08-18, sleep 00:30 KST 08-19 — the documented
+  // sleep-log-triggers-report client flow calling right after that sleep.
+  const logs = [
+    log("wake", "2026-08-17T23:00:00.000Z"), // 08:00 KST 08-18
+    log("sleep", "2026-08-18T15:30:00.000Z"), // 00:30 KST 08-19
+  ];
+  const sessions = computeDaySessions(logs);
+  const todayStartMs = new Date("2026-08-18T15:00:00.000Z").getTime(); // 00:00 KST 08-19
+  const resolved = resolveTodaySession(sessions, "2026-08-19", todayStartMs);
+  assert.equal(resolved?.date, "2026-08-18");
+  assert.equal(resolved?.session.closed, true);
+});
+
+test("resolveTodaySession: does not fall back to yesterday's session if it closed before today's KST midnight", () => {
+  // wake 07:00 KST 08-18, sleep 23:00 KST 08-18 (same day, no spillover) —
+  // checking at 15:00 KST 08-19 with nothing logged yet today.
+  const logs = [
+    log("wake", "2026-08-17T22:00:00.000Z"), // 07:00 KST 08-18
+    log("sleep", "2026-08-18T14:00:00.000Z"), // 23:00 KST 08-18
+  ];
+  const sessions = computeDaySessions(logs);
+  const todayStartMs = new Date("2026-08-18T15:00:00.000Z").getTime(); // 00:00 KST 08-19
+  const resolved = resolveTodaySession(sessions, "2026-08-19", todayStartMs);
+  assert.equal(resolved, null);
+});
+
+test("resolveTodaySession: returns null when neither today nor a spilled-over yesterday session exists", () => {
+  const resolved = resolveTodaySession([], "2026-08-19", new Date("2026-08-18T15:00:00.000Z").getTime());
+  assert.equal(resolved, null);
 });

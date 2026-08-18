@@ -4,6 +4,7 @@ import { enforceRateLimit } from "../_shared/rate-limit.ts";
 import { serverError } from "../_shared/errors.ts";
 import { requestLogger } from "../_shared/log.ts";
 import { dayRange } from "../_shared/ai-report.ts";
+import { computeDaySessions, sessionsByDate } from "../_shared/day-sessions.ts";
 
 // "meal" (single-point) is deprecated in favor of meal_start/meal_end (a
 // paired duration, like study) — still readable via GET since the DB
@@ -65,21 +66,27 @@ export default {
         ));
       }
 
-      // KST calendar day, not UTC — a UTC day runs 09:00-09:00 KST, which
-      // would silently drop a Korean user's pre-9am logs from "today."
-      const { start, end } = dayRange(date);
+      // Same wake-to-sleep session as /scores, /reports-daily, etc. (see
+      // day-sessions.ts) rather than a fixed clock boundary, so a log this
+      // endpoint returns for `date` always matches what those endpoints
+      // scored it under. Fetch from this KST day's start through a 48h
+      // lookahead so a late sleeper's "sleep" log — however far past this
+      // day's midnight it falls — is still captured.
+      const { start } = dayRange(date);
+      const fetchEnd = new Date(new Date(start).getTime() + 48 * 60 * 60 * 1000).toISOString();
 
       const { data, error } = await ctx.supabase
         .from("routine_logs")
         .select("id, type, timestamp, created_at")
         .gte("timestamp", start)
-        .lt("timestamp", end)
+        .lt("timestamp", fetchEnd)
         .order("timestamp", { ascending: true });
 
       if (error) {
         return log(serverError(error));
       }
-      return log(Response.json(data, { status: 200 }));
+      const session = sessionsByDate(computeDaySessions(data ?? [])).get(date);
+      return log(Response.json(session?.logs ?? [], { status: 200 }));
     }
 
     if (req.method === "DELETE") {

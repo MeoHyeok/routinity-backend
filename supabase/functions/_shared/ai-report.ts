@@ -1,7 +1,6 @@
-import { kstDateOf } from "./day-sessions.ts";
+import { KST_OFFSET_MS, kstDateOf } from "./day-sessions.ts";
 
 const CLAUDE_MODEL = "claude-haiku-4-5-20251001";
-const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
 // KST calendar date, not UTC — a UTC calendar day runs 09:00 KST to 09:00
 // KST the next day, which would misattribute a Korean user's early-morning

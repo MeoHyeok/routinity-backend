@@ -1,6 +1,6 @@
 import type { RoutineLog } from "./scoring.ts";
 
-const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+export const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
 // The KST (UTC+9) calendar date an instant falls on. Used instead of a raw
 // UTC date everywhere "today"/"this day" means something to a Korean user —
@@ -34,15 +34,32 @@ export interface DaySession {
 // computeDayBreakdown still applies. A log that arrives before any `wake`
 // has been seen (nothing open yet) is orphaned and dropped — there's no
 // session for it to belong to.
+//
+// Exception: a `wake` more than MAX_SESSION_MS after the one that opened
+// the current session closes that session (unclosed — no sleep was ever
+// found for it) and starts a fresh one. Without this, a user who forgets to
+// log `sleep` for a day or more would have every subsequent day's logs
+// silently folded into one ever-growing session labeled with the first
+// day's date — losing those days' wake_time scoring entirely and inflating
+// the first day's study/meal totals with everything logged after it.
+const MAX_SESSION_MS = 24 * 60 * 60 * 1000;
+
 export function computeDaySessions(logs: RoutineLog[]): DaySession[] {
-  const sorted = [...logs].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  const sorted = [...logs].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   const sessions: DaySession[] = [];
   let current: DaySession | null = null;
+  let openedAtMs = 0;
 
   for (const log of sorted) {
+    const logMs = new Date(log.timestamp).getTime();
+    if (current !== null && log.type === "wake" && logMs - openedAtMs > MAX_SESSION_MS) {
+      sessions.push(current);
+      current = null;
+    }
     if (current === null) {
       if (log.type !== "wake") continue;
       current = { date: kstDateOf(log.timestamp), logs: [], closed: false };
+      openedAtMs = logMs;
     }
     current.logs.push(log);
     if (log.type === "sleep") {
@@ -61,4 +78,35 @@ export function sessionsByDate(sessions: DaySession[]): Map<string, DaySession> 
   const map = new Map<string, DaySession>();
   for (const s of sessions) map.set(s.date, s);
   return map;
+}
+
+// For /reports-daily's "today" only. Normally "today" is whatever session
+// opened with a wake today — but the documented client trigger for this
+// endpoint is "call it right after the sleep log succeeds," and a user who
+// sleeps past KST midnight has their session labeled *yesterday* (by its
+// wake) while the wall clock has already ticked over to today. Without this
+// fallback, that request would find no session for today and return an
+// empty report at the exact moment the user finishes their day.
+//
+// Falls back to yesterday's session only when it's closed AND its closing
+// sleep log landed after today's KST midnight — i.e. it genuinely spilled
+// into today, not a normal same-day session from a full day ago that
+// happens to still be the most recent one on file.
+export function resolveTodaySession(
+  sessions: DaySession[],
+  today: string,
+  todayStartMs: number,
+): { date: string; session: DaySession } | null {
+  const map = sessionsByDate(sessions);
+  const todaySession = map.get(today);
+  if (todaySession) return { date: today, session: todaySession };
+
+  const yesterday = kstDateOf(new Date(todayStartMs - 1));
+  const prev = map.get(yesterday);
+  if (prev && prev.closed) {
+    const closeMs = new Date(prev.logs[prev.logs.length - 1].timestamp).getTime();
+    if (closeMs >= todayStartMs) return { date: yesterday, session: prev };
+  }
+
+  return null;
 }
