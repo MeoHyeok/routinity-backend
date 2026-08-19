@@ -338,7 +338,7 @@ Authorization: Bearer <access_token>
 
 ## GET /functions/v1/reports-monthly
 
-최근 30일(캘린더 월이 아니라 롤링 윈도우, UTC 기준) 목표 달성 현황을 요약한 AI 월간 리포트 조회. weekly/daily와 동일하게 조회 시점에 없으면 생성.
+최근 30일(캘린더 월이 아니라 롤링 윈도우, KST 기준) 목표 달성 현황을 요약한 AI 월간 리포트 조회. weekly/daily와 동일하게 조회 시점에 없으면 생성.
 
 **요청 헤더**
 ```
@@ -407,7 +407,7 @@ Authorization: Bearer <access_token>
 }
 ```
 
-- `weekday`: 0(일)~6(토), UTC 기준. `weekday_averages`는 요일 오름차순 정렬
+- `weekday`: 0(일)~6(토), 날짜 문자열 자체가 KST 캘린더 날짜(`day-sessions.ts`의 `kstDateOf`)이므로 요일도 KST 기준. `weekday_averages`는 요일 오름차순 정렬
 - **집계 대상**: `daily_score`(각 날짜 `/scores`와 동일 계산)가 계산되는 날짜만 포함. 목표를 하나도 설정 안 했으면 전부 제외, **그 목표를 실제로 설정하기 이전 날짜도 제외**(2026-08-14 수정 — 최초에는 이 부분이 빠져서 막 가입한 유저의 지난 27일이 전부 0점으로 잡히는 문제가 있었음, 아래 참고)
 - 요일별 데이터가 하나도 없으면 `weekday_averages: []`, `best_weekday`/`worst_weekday`: `null`
 - `trend`: 최근 7일 평균 vs 그 이전 7일 평균. 두 구간 모두 데이터가 있어야 계산, 하나라도 없으면 `null`. 두 평균 차이가 3점 이하면 `"flat"`(반올림 노이즈로 오인 방지), 그보다 크면 `"up"`/`"down"`
