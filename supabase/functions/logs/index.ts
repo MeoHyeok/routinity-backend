@@ -4,7 +4,7 @@ import { enforceRateLimit } from "../_shared/rate-limit.ts";
 import { serverError } from "../_shared/errors.ts";
 import { requestLogger } from "../_shared/log.ts";
 import { dayRange } from "../_shared/ai-report.ts";
-import { computeDaySessions, sessionsByDate } from "../_shared/day-sessions.ts";
+import { computeDaySessions, sessionsByDate, SESSION_LOOKBACK_MS } from "../_shared/day-sessions.ts";
 
 // "meal" (single-point) is deprecated in favor of meal_start/meal_end (a
 // paired duration, like study) — still readable via GET since the DB
@@ -71,14 +71,19 @@ export default {
       // endpoint returns for `date` always matches what those endpoints
       // scored it under. Fetch from this KST day's start through a 48h
       // lookahead so a late sleeper's "sleep" log — however far past this
-      // day's midnight it falls — is still captured.
+      // day's midnight it falls — is still captured. Also fetch from
+      // SESSION_LOOKBACK_MS before that start, or a still-open session from
+      // before this day (no `sleep` logged yet) would be invisible here and
+      // its first in-window `wake` misread as opening a brand new session —
+      // see SESSION_LOOKBACK_MS's doc comment.
       const { start } = dayRange(date);
+      const fetchStart = new Date(new Date(start).getTime() - SESSION_LOOKBACK_MS).toISOString();
       const fetchEnd = new Date(new Date(start).getTime() + 48 * 60 * 60 * 1000).toISOString();
 
       const { data, error } = await ctx.supabase
         .from("routine_logs")
         .select("id, type, timestamp, created_at")
-        .gte("timestamp", start)
+        .gte("timestamp", fetchStart)
         .lt("timestamp", fetchEnd)
         .order("timestamp", { ascending: true });
 

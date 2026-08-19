@@ -65,9 +65,41 @@ test("computeDaySessions: a duplicate wake while a session is open is folded int
 
 test("computeDaySessions: today's session with no sleep log yet is open, not dropped", () => {
   const logs = [log("wake", "2026-08-18T00:00:00.000Z")];
-  const sessions = computeDaySessions(logs);
+  const nowMs = new Date("2026-08-18T05:00:00.000Z").getTime(); // 5h after wake
+  const sessions = computeDaySessions(logs, nowMs);
   assert.equal(sessions.length, 1);
   assert.equal(sessions[0].closed, false);
+  assert.equal(sessions[0].autoClosed, false);
+});
+
+test("computeDaySessions: a still-open session past MAX_SESSION_MS with no sleep ever logged is autoClosed", () => {
+  const logs = [
+    log("wake", "2026-08-18T00:00:00.000Z"),
+    log("meal_start", "2026-08-18T01:00:00.000Z"),
+    log("meal_end", "2026-08-18T01:30:00.000Z"),
+  ];
+  const nowMs = new Date("2026-08-19T01:00:00.000Z").getTime(); // 25h after wake
+  const sessions = computeDaySessions(logs, nowMs);
+  assert.equal(sessions.length, 1);
+  assert.equal(sessions[0].closed, false); // still no real sleep log
+  assert.equal(sessions[0].autoClosed, true);
+  assert.equal(sessions[0].logs.length, 3); // autoClosed doesn't synthesize or drop any logs
+});
+
+test("computeDaySessions: autoClosed is exactly the MAX_SESSION_MS boundary, not a moment earlier", () => {
+  const logs = [log("wake", "2026-08-18T00:00:00.000Z")];
+  const exactlyAtBoundary = new Date("2026-08-19T00:00:00.000Z").getTime(); // exactly 24h
+  const justPast = new Date("2026-08-19T00:00:00.001Z").getTime();
+  assert.equal(computeDaySessions(logs, exactlyAtBoundary)[0].autoClosed, false);
+  assert.equal(computeDaySessions(logs, justPast)[0].autoClosed, true);
+});
+
+test("computeDaySessions: a session already closed by a real sleep log is never autoClosed", () => {
+  const logs = [log("wake", "2026-08-18T00:00:00.000Z"), log("sleep", "2026-08-18T13:00:00.000Z")];
+  const nowMs = new Date("2026-09-01T00:00:00.000Z").getTime(); // long after, irrelevant once really closed
+  const sessions = computeDaySessions(logs, nowMs);
+  assert.equal(sessions[0].closed, true);
+  assert.equal(sessions[0].autoClosed, false);
 });
 
 test("computeDaySessions: a log before any wake has ever occurred is orphaned and dropped", () => {

@@ -6,7 +6,7 @@ import {
   type RoutineLog,
 } from "./scoring.ts";
 import { dateOnly, dayRange } from "./ai-report.ts";
-import { computeDaySessions, sessionsByDate } from "./day-sessions.ts";
+import { computeDaySessions, sessionsByDate, SESSION_LOOKBACK_MS } from "./day-sessions.ts";
 
 const WEEKDAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
 const WINDOW_DAYS = 28;
@@ -135,13 +135,17 @@ export async function loadInsights(supabase: SupabaseLike, today: string): Promi
     dateList.push(dateOnly(new Date(new Date(todayStart).getTime() - i * 24 * 60 * 60 * 1000)));
   }
   const windowStart = dayRange(dateList[0]).start;
+  // Look back an extra SESSION_LOOKBACK_MS before the window — see its doc
+  // comment in day-sessions.ts for why a still-open session from before
+  // dateList[0] would otherwise be invisible here and misclassified.
+  const fetchStart = new Date(new Date(windowStart).getTime() - SESSION_LOOKBACK_MS).toISOString();
 
   const [goalsResult, logsResult] = await Promise.all([
     supabase.from("goals").select("target_type, target_value, created_at"),
     supabase
       .from("routine_logs")
       .select("type, timestamp")
-      .gte("timestamp", windowStart)
+      .gte("timestamp", fetchStart)
       .lt("timestamp", todayEnd)
       .order("timestamp", { ascending: true }),
   ]);

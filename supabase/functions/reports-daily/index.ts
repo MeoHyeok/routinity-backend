@@ -5,7 +5,7 @@ import { buildDailyClaudePrompt, buildDailyTemplateReport } from "../_shared/dai
 import { dateOnly, dayRange, extractSuggestedAction, generateWithClaude } from "../_shared/ai-report.ts";
 import { loadInsights } from "../_shared/insights.ts";
 import { computeDayBreakdown, toTimeBreakdownField } from "../_shared/day-breakdown.ts";
-import { computeDaySessions, resolveTodaySession } from "../_shared/day-sessions.ts";
+import { computeDaySessions, resolveTodaySession, SESSION_LOOKBACK_MS } from "../_shared/day-sessions.ts";
 import { deriveDailySuggestedAction } from "../_shared/suggested-action.ts";
 import { enforceRateLimit } from "../_shared/rate-limit.ts";
 import { serverError } from "../_shared/errors.ts";
@@ -64,9 +64,15 @@ export default {
     // `sleep` (the documented "sleep log -> immediately fetch today's
     // report" client trigger) would have its wake fall outside the window,
     // leaving nothing but an orphaned sleep log for resolveTodaySession to
-    // work with. See day-sessions.ts.
+    // work with. See day-sessions.ts. This also happens to satisfy
+    // SESSION_LOOKBACK_MS (a KST day is always 24h, no DST) — take the
+    // earlier of the two explicitly rather than relying on that coincidence,
+    // so this stays correct if MAX_SESSION_MS ever changes.
     const yesterday = dateOnly(new Date(new Date(todayStart).getTime() - 1));
-    const fetchStart = dayRange(yesterday).start;
+    const fetchStart = new Date(Math.min(
+      new Date(dayRange(yesterday).start).getTime(),
+      new Date(todayStart).getTime() - SESSION_LOOKBACK_MS,
+    )).toISOString();
 
     const [goalsResult, logsResult] = await Promise.all([
       ctx.supabase.from("goals").select("target_type, target_value"),

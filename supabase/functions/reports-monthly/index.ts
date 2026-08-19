@@ -9,7 +9,7 @@ import { requestLogger } from "../_shared/log.ts";
 import { dateOnly, dayRange, extractSuggestedAction, generateWithClaude } from "../_shared/ai-report.ts";
 import { loadInsights } from "../_shared/insights.ts";
 import { averageDayBreakdowns, computeDayBreakdown, toAverageTimeBreakdownField } from "../_shared/day-breakdown.ts";
-import { computeDaySessions, sessionsByDate } from "../_shared/day-sessions.ts";
+import { computeDaySessions, sessionsByDate, SESSION_LOOKBACK_MS } from "../_shared/day-sessions.ts";
 import { deriveWindowSuggestedAction } from "../_shared/suggested-action.ts";
 
 export default {
@@ -65,13 +65,17 @@ export default {
     }
 
     const windowStart = dayRange(dateList[0]).start;
+    // Look back an extra SESSION_LOOKBACK_MS before the window — see its doc
+    // comment in day-sessions.ts for why a still-open session from before
+    // dateList[0] would otherwise be invisible here and misclassified.
+    const fetchStart = new Date(new Date(windowStart).getTime() - SESSION_LOOKBACK_MS).toISOString();
 
     const [goalsResult, logsResult] = await Promise.all([
       ctx.supabase.from("goals").select("target_type, target_value, created_at"),
       ctx.supabase
         .from("routine_logs")
         .select("type, timestamp")
-        .gte("timestamp", windowStart)
+        .gte("timestamp", fetchStart)
         .lt("timestamp", todayEnd)
         .order("timestamp", { ascending: true }),
     ]);
