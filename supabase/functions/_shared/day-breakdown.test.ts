@@ -32,13 +32,15 @@ test("computeDayBreakdown: null when sleep is not after wake", () => {
 });
 
 test("computeDayBreakdown: splits the awake span into meal/study/rest", () => {
+  // All timestamps are UTC instants of the KST wall-clock times noted in the
+  // comments (KST = UTC+9) — matches how real device timestamps arrive.
   const logs = [
-    { type: "wake", timestamp: "2026-08-14T06:00:00Z" }, // 06:00
-    { type: "meal_start", timestamp: "2026-08-14T07:00:00Z" },
-    { type: "meal_end", timestamp: "2026-08-14T07:30:00Z" }, // 30 min meal
-    { type: "study_start", timestamp: "2026-08-14T09:00:00Z" },
-    { type: "study_end", timestamp: "2026-08-14T10:00:00Z" }, // 60 min study
-    { type: "sleep", timestamp: "2026-08-14T22:00:00Z" }, // 22:00 -> 16h awake = 960 min
+    { type: "wake", timestamp: "2026-08-13T21:00:00Z" }, // 06:00 KST
+    { type: "meal_start", timestamp: "2026-08-13T22:00:00Z" },
+    { type: "meal_end", timestamp: "2026-08-13T22:30:00Z" }, // 30 min meal
+    { type: "study_start", timestamp: "2026-08-14T00:00:00Z" },
+    { type: "study_end", timestamp: "2026-08-14T01:00:00Z" }, // 60 min study
+    { type: "sleep", timestamp: "2026-08-14T13:00:00Z" }, // 22:00 KST -> 16h awake = 960 min
   ];
   const b = computeDayBreakdown(logs)!;
   assert.equal(b.wakeTime, "06:00");
@@ -63,11 +65,12 @@ test("computeDayBreakdown: rest floors at 0 rather than going negative", () => {
 });
 
 test("computeDayBreakdown: earliest wake, latest sleep wins on same-day duplicates", () => {
+  // KST wall-clock times noted in comments (KST = UTC+9).
   const logs = [
-    { type: "wake", timestamp: "2026-08-14T07:00:00Z" },
-    { type: "wake", timestamp: "2026-08-14T06:00:00Z" },
-    { type: "sleep", timestamp: "2026-08-14T22:00:00Z" },
-    { type: "sleep", timestamp: "2026-08-14T23:00:00Z" },
+    { type: "wake", timestamp: "2026-08-13T22:00:00Z" }, // 07:00 KST
+    { type: "wake", timestamp: "2026-08-13T21:00:00Z" }, // 06:00 KST
+    { type: "sleep", timestamp: "2026-08-14T13:00:00Z" }, // 22:00 KST
+    { type: "sleep", timestamp: "2026-08-14T14:00:00Z" }, // 23:00 KST
   ];
   const b = computeDayBreakdown(logs)!;
   assert.equal(b.wakeTime, "06:00");

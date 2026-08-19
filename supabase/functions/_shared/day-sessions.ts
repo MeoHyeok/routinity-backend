@@ -12,6 +12,16 @@ export function kstDateOf(timestamp: string | Date): string {
   return new Date(ms + KST_OFFSET_MS).toISOString().slice(0, 10);
 }
 
+// The KST wall-clock HH:MM an instant falls on. Same +KST_OFFSET_MS shift as
+// kstDateOf, just sliced for time-of-day instead of calendar date — used
+// anywhere a timestamp is displayed/compared as a clock time a Korean user
+// would recognize (wake_time goal scoring, day-breakdown's wake/sleep
+// labels), as opposed to a raw UTC instant.
+export function kstTimeOfDay(timestamp: string | Date): string {
+  const ms = typeof timestamp === "string" ? new Date(timestamp).getTime() : timestamp.getTime();
+  return new Date(ms + KST_OFFSET_MS).toISOString().slice(11, 16);
+}
+
 export interface DaySession {
   date: string; // YYYY-MM-DD, KST date of the session's opening wake log
   logs: RoutineLog[]; // all logs from that wake (inclusive) to the closing sleep (inclusive), timestamp order

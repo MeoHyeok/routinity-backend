@@ -1,3 +1,5 @@
+import { kstTimeOfDay } from "./day-sessions.ts";
+
 export type ScoreStatus = "achieved" | "not_achieved" | "missing";
 
 export interface Goal {
@@ -68,7 +70,7 @@ function scoreWakeTime(goal: Goal, logs: RoutineLog[]): ScoreEntry {
     };
   }
 
-  const actual = new Date(wakeLog.timestamp).toISOString().slice(11, 16);
+  const actual = kstTimeOfDay(wakeLog.timestamp);
   return {
     target_type: goal.target_type,
     target_value: goal.target_value,

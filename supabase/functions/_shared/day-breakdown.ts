@@ -1,4 +1,5 @@
 import { sumPairedMinutes, type RoutineLog } from "./scoring.ts";
+import { kstTimeOfDay } from "./day-sessions.ts";
 
 export interface DayBreakdown {
   wakeTime: string; // HH:MM
@@ -18,7 +19,7 @@ export interface AverageBreakdown {
 }
 
 function timeOf(log: RoutineLog): string {
-  return new Date(log.timestamp).toISOString().slice(11, 16);
+  return kstTimeOfDay(log.timestamp);
 }
 
 // Requires both a "wake" and a later "sleep" log the same day — without a

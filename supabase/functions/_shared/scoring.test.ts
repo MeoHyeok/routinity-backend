@@ -4,7 +4,8 @@ import { computeDailyScore, computeScores, goalsExistingBy } from "./scoring.ts"
 
 test("wake_time: achieved when actual wake time is at or before target", () => {
   const goals = [{ target_type: "wake_time", target_value: "07:00" }];
-  const logs = [{ type: "wake", timestamp: "2026-08-10T06:50:00Z" }];
+  // 06:50 KST on 08-10 = 21:50 UTC on 08-09
+  const logs = [{ type: "wake", timestamp: "2026-08-09T21:50:00Z" }];
   const [score] = computeScores(goals, logs);
   assert.equal(score.status, "achieved");
   assert.equal(score.actual_value, "06:50");
@@ -12,7 +13,8 @@ test("wake_time: achieved when actual wake time is at or before target", () => {
 
 test("wake_time: not_achieved when actual wake time is after target", () => {
   const goals = [{ target_type: "wake_time", target_value: "07:00" }];
-  const logs = [{ type: "wake", timestamp: "2026-08-10T07:30:00Z" }];
+  // 07:30 KST on 08-10 = 22:30 UTC on 08-09
+  const logs = [{ type: "wake", timestamp: "2026-08-09T22:30:00Z" }];
   const [score] = computeScores(goals, logs);
   assert.equal(score.status, "not_achieved");
   assert.equal(score.actual_value, "07:30");
@@ -77,9 +79,10 @@ test("computeScores: multiple goals scored independently, unsupported target_typ
 
 test("wake_time: earliest wake log wins regardless of input order (DB row order isn't guaranteed)", () => {
   const goals = [{ target_type: "wake_time", target_value: "07:00" }];
+  // 07:20/06:40 KST on 08-10 = 22:20/21:40 UTC on 08-09
   const logs = [
-    { type: "wake", timestamp: "2026-08-10T07:20:00Z" },
-    { type: "wake", timestamp: "2026-08-10T06:40:00Z" },
+    { type: "wake", timestamp: "2026-08-09T22:20:00Z" },
+    { type: "wake", timestamp: "2026-08-09T21:40:00Z" },
   ];
   const [score] = computeScores(goals, logs);
   assert.equal(score.actual_value, "06:40");
