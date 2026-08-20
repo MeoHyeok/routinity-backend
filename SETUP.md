@@ -1,11 +1,15 @@
 # 협업자 셋업 가이드
 
-이 프로젝트는 저장소 2개로 나뉘어 있습니다 — 백엔드(`routinity-backend`, 이 저장소)와 iOS 앱(`routinity-ios`). 아래 순서대로 진행하면 됩니다. 막히는 단계가 있으면 에러 메시지를 그대로 복사해서 ChatGPT나 Claude 같은 AI한테 물어봐도 충분히 도움받을 수 있는 수준의 작업입니다.
+이 프로젝트는 저장소 3개로 나뉘어 있습니다 — 백엔드(`routinity-backend`, 이 저장소), iOS 앱(`routinity-ios`), 웹 클라이언트(`routinity-web`). 아래 순서대로 진행하면 됩니다. 막히는 단계가 있으면 에러 메시지를 그대로 복사해서 ChatGPT나 Claude 같은 AI한테 물어봐도 충분히 도움받을 수 있는 수준의 작업입니다.
+
+`routinity-backend`는 이제 public repo라 클론만 하면 되고, `.env`용 `SUPABASE_URL`/`SUPABASE_ANON_KEY`도 `docs/api-contract.md`에 이미 공개돼 있어서 그대로 복사해도 됩니다(민감정보 아님). `SUPABASE_SERVICE_ROLE_KEY`나 iOS 실기기 서명처럼 진짜 프로젝트 멤버십이 필요한 부분만 아래 0번 초대가 필요합니다.
+
+`routinity-web`은 셋업이 훨씬 간단합니다(환경변수도 없음) — 별도 가이드는 그 저장소의 `SETUP.md` 참고.
 
 ## 0. 초대 수락
 
-- GitHub 저장소 초대(`routinity-backend`, `routinity-ios`) 수락
-- Supabase 프로젝트 초대 수락 (이메일로 옴, 없으면 프로젝트 소유자에게 요청)
+- GitHub 저장소 초대(`routinity-backend`, `routinity-ios`) 수락 — `routinity-web`은 public이라 초대 불필요
+- Supabase 프로젝트 초대 수락 (이메일로 옴, 없으면 프로젝트 소유자에게 요청) — `SUPABASE_SERVICE_ROLE_KEY`나 실기기 서명이 필요 없다면 이 초대 없이도 anon key만으로 두 앱 다 돌려볼 수 있음
 
 ## 1. 백엔드 (routinity-backend)
 
@@ -52,6 +56,21 @@ routinity-ios 저장소를 GitHub 초대 링크로 클론합니다.
    - 기기에서 설정 > 개인정보 보호 및 보안 > 개발자 모드 켜기
    - 첫 설치 후 설정 > 일반 > VPN 및 기기 관리에서 개발자 인증서 신뢰
    - 이건 로컬 전용 변경이라(`xcuserdata`가 gitignore됨) 다른 사람 셋업엔 영향 없음
+
+## 3. 웹 클라이언트 (routinity-web)
+
+```
+git clone https://github.com/MeoHyeok/routinity-web.git
+cd routinity-web
+npm install
+npm run dev
+```
+
+- Node.js `^20.19.0` 또는 `>=22.12.0` 필요 (Vite 8 요구사항)
+- `http://localhost:5173/routinity-web/`로 접속 — 끝의 `/routinity-web/`까지 들어가야 함(`vite.config.ts`의 base 경로), `/`로만 들어가면 빈 화면일 수 있음
+- **환경변수 설정 필요 없음** — Supabase URL/anon key가 `src/lib/supabase.ts`에 이미 들어있음(anon key는 공개돼도 되는 키, RLS로 보호되는 구조는 iOS/백엔드와 동일)
+- 로그인은 새로 회원가입하거나 공유 테스트 계정 사용. `npm run build`(타입체크+빌드), `npm run lint`로 PR 전 확인 가능
+- 자세한 내용은 그 저장소의 `SETUP.md` 참고
 
 ## 문제가 생기면
 
