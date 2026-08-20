@@ -56,13 +56,23 @@ export async function generateWithClaude(prompt: string): Promise<string | null>
       },
     );
 
-    if (!res.ok) return null;
+    if (!res.ok) {
+      // Swallowing the reason (rate limit, quota, bad key, etc.) made a
+      // silent template fallback indistinguishable from a real outage —
+      // log it so a rate-limited free-tier key shows up in the function
+      // logs instead of just looking like "Gemini never runs".
+      console.error(`Gemini API error ${res.status}: ${await res.text()}`);
+      return null;
+    }
 
     const data = await res.json();
     const candidate = data.candidates?.[0];
     // "SAFETY"/"RECITATION"/etc. are Gemini's refusal-shaped finish reasons —
     // same rationale as the old stop_reason === "refusal" check.
-    if (!candidate || candidate.finishReason !== "STOP") return null;
+    if (!candidate || candidate.finishReason !== "STOP") {
+      console.error(`Gemini declined: finishReason=${candidate?.finishReason ?? "none"}`);
+      return null;
+    }
 
     const text = (candidate.content?.parts ?? [])
       .map((p: { text?: string }) => p.text)
