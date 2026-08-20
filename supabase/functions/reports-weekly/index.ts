@@ -10,7 +10,7 @@ import {
 import { enforceRateLimit } from "../_shared/rate-limit.ts";
 import { serverError } from "../_shared/errors.ts";
 import { requestLogger } from "../_shared/log.ts";
-import { dateOnly, dayRange, extractSuggestedAction, generateWithClaude } from "../_shared/ai-report.ts";
+import { dateOnly, dayRange, extractSuggestedAction, generateWithClaude, GEMINI_MODEL } from "../_shared/ai-report.ts";
 import { loadInsights } from "../_shared/insights.ts";
 import { averageDayBreakdowns, computeDayBreakdown, toAverageTimeBreakdownField } from "../_shared/day-breakdown.ts";
 import { computeDaySessions, sessionsByDate, SESSION_LOOKBACK_MS } from "../_shared/day-sessions.ts";
@@ -122,7 +122,7 @@ export default {
     const claudeRaw = await generateWithClaude(buildClaudePrompt(stats, insights, breakdown));
     const claudeParsed = claudeRaw !== null ? extractSuggestedAction(claudeRaw) : null;
     const content = claudeParsed?.content ?? buildTemplateReport(stats, insights, breakdown);
-    const generatedVia = claudeRaw !== null ? "claude" : "template";
+    const generatedVia = claudeRaw !== null ? GEMINI_MODEL : "template";
     const timeBreakdownField = toAverageTimeBreakdownField(breakdown);
     const suggestedAction = claudeParsed?.suggestedAction ?? deriveWindowSuggestedAction(stats);
 

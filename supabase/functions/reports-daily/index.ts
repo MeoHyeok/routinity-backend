@@ -2,7 +2,7 @@ import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
 import { computeDailyScore, computeScores, type Goal, type RoutineLog } from "../_shared/scoring.ts";
 import { buildDailyClaudePrompt, buildDailyTemplateReport } from "../_shared/daily-report.ts";
-import { dateOnly, dayRange, extractSuggestedAction, generateWithClaude } from "../_shared/ai-report.ts";
+import { dateOnly, dayRange, extractSuggestedAction, generateWithClaude, GEMINI_MODEL } from "../_shared/ai-report.ts";
 import { loadInsights } from "../_shared/insights.ts";
 import { computeDayBreakdown, toTimeBreakdownField } from "../_shared/day-breakdown.ts";
 import { computeDaySessions, resolveTodaySession, SESSION_LOOKBACK_MS } from "../_shared/day-sessions.ts";
@@ -118,7 +118,7 @@ export default {
     const claudeRaw = await generateWithClaude(buildDailyClaudePrompt(scores, dailyScore, insights, breakdown));
     const claudeParsed = claudeRaw !== null ? extractSuggestedAction(claudeRaw) : null;
     const content = claudeParsed?.content ?? buildDailyTemplateReport(scores, dailyScore, insights, breakdown);
-    const generatedVia = claudeRaw !== null ? "claude" : "template";
+    const generatedVia = claudeRaw !== null ? GEMINI_MODEL : "template";
     const timeBreakdownField = toTimeBreakdownField(breakdown);
     const suggestedAction = claudeParsed?.suggestedAction ?? deriveDailySuggestedAction(scores);
 

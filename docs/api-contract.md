@@ -217,6 +217,8 @@ Authorization: Bearer <access_token>
 
 이번 주(오늘 포함 최근 7일, 각 날짜는 KST 기준) 목표 달성 현황을 요약한 AI 리포트 조회. 조회 시점에 없으면 생성.
 
+**2026-08-20 변경**: AI 생성 엔진을 Claude에서 Gemini로 전환(해커톤 비용 절감을 위한 실험). `generated_via`가 이제 고정된 `"claude"` 대신 **실제 생성에 쓰인 모델 id를 그대로** 반환한다(예: `"gemini-3.6-flash"`) — 클라이언트가 이 필드를 `=== "claude"`로 문자열 비교하고 있었다면 `!== "template"`(AI 생성 여부만 판단) 방식으로 바꿔야 함. 필드명/타입(`string | "template"`)은 그대로.
+
 **요청 헤더**
 ```
 Authorization: Bearer <access_token>
@@ -230,7 +232,7 @@ Authorization: Bearer <access_token>
   "time_breakdown": { "active_minutes": 1020, "meal_minutes": 30, "study_minutes": 60, "rest_minutes": 930 },
   "suggested_action": "다음엔 공부 시작 전에 목표 시간만큼 타이머를 맞춰서 공부 시간을 채워보세요.",
   "cached": false,
-  "generated_via": "claude" | "template"
+  "generated_via": "<실제 사용된 모델 id, 예: gemini-3.6-flash>" | "template"
 }
 ```
 
@@ -297,7 +299,7 @@ Authorization: Bearer <access_token>
   "time_breakdown": { "active_minutes": 1020, "meal_minutes": 30, "study_minutes": 60, "rest_minutes": 930 },
   "suggested_action": "공부 시간이 목표보다 30분 부족했어요. 내일은 공부 시작 전에 타이머를 목표 시간(60분)에 맞춰보세요.",
   "cached": false,
-  "generated_via": "claude" | "template"
+  "generated_via": "<실제 사용된 모델 id, 예: gemini-3.6-flash>" | "template"
 }
 ```
 
@@ -354,7 +356,7 @@ Authorization: Bearer <access_token>
   "time_breakdown": { "active_minutes": 1020, "meal_minutes": 30, "study_minutes": 60, "rest_minutes": 930 },
   "suggested_action": "다음엔 알람을 목표 시간보다 10분 일찍 맞춰서 기상 목표 달성률을 높여보세요.",
   "cached": false,
-  "generated_via": "claude" | "template"
+  "generated_via": "<실제 사용된 모델 id, 예: gemini-3.6-flash>" | "template"
 }
 ```
 

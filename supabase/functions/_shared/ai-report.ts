@@ -1,10 +1,10 @@
 import { KST_OFFSET_MS, kstDateOf } from "./day-sessions.ts";
 
 // Experimental: swapped from Anthropic Claude to Gemini to try Google AI
-// Studio's free tier for the hackathon. Function name/callers/response
-// field ("generated_via": "claude") were left untouched to keep this a
-// single-file, easily-revertable change — see git history to roll back.
-const GEMINI_MODEL = "gemini-3.6-flash";
+// Studio's free tier for the hackathon. Exported so each report endpoint's
+// `generated_via` reports the real model that produced the content instead
+// of a hardcoded "claude" — see git history to roll back to Anthropic.
+export const GEMINI_MODEL = "gemini-3.6-flash";
 
 // KST calendar date, not UTC — a UTC calendar day runs 09:00 KST to 09:00
 // KST the next day, which would misattribute a Korean user's early-morning
