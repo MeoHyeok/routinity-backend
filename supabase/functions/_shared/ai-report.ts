@@ -40,6 +40,18 @@ export function extractSuggestedAction(text: string): { content: string; suggest
   return { content: lines.slice(0, -1).join("\n").trimEnd(), suggestedAction: match[1].trim() };
 }
 
+// Without a bound, a slow Gemini response (this model does internal
+// "thinking" before answering — observed taking well over 10s on some
+// calls) leaves the fetch hanging for the life of the request. That's worse
+// than a template fallback: instead of a fast, deliberate substitution, the
+// whole request stalls until Supabase's own platform-level function timeout
+// kills it, which the client sees as a bare failure with no template
+// fallback at all (the catch block below never gets to run because nothing
+// ever rejects on our own terms). Bounding the call turns "Gemini is being
+// slow" back into an ordinary, fast fallback like every other failure mode
+// here (missing key, network error, API error, refusal).
+const GEMINI_TIMEOUT_MS = 20_000;
+
 export async function generateWithClaude(prompt: string): Promise<string | null> {
   const apiKey = Deno.env.get("GEMINI_API_KEY");
   if (!apiKey) return null;
@@ -53,6 +65,7 @@ export async function generateWithClaude(prompt: string): Promise<string | null>
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
         }),
+        signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
       },
     );
 
@@ -85,7 +98,11 @@ export async function generateWithClaude(prompt: string): Promise<string | null>
     // (and cache) an empty report while still reporting generated_via
     // inconsistently depending on how each caller checks for failure.
     return text.trim().length > 0 ? text : null;
-  } catch {
+  } catch (e) {
+    // Distinguish a deliberate timeout from other network failures in the
+    // logs — the "SAFETY"/"RECITATION"/rate-limit fallbacks above already
+    // log a reason, so a bare network-level catch should too.
+    console.error(`Gemini request failed: ${e instanceof Error ? e.name + ": " + e.message : String(e)}`);
     return null;
   }
 }
