@@ -1,6 +1,10 @@
 import { KST_OFFSET_MS, kstDateOf } from "./day-sessions.ts";
 
-const CLAUDE_MODEL = "claude-haiku-4-5-20251001";
+// Experimental: swapped from Anthropic Claude to Gemini to try Google AI
+// Studio's free tier for the hackathon. Function name/callers/response
+// field ("generated_via": "claude") were left untouched to keep this a
+// single-file, easily-revertable change — see git history to roll back.
+const GEMINI_MODEL = "gemini-3.6-flash";
 
 // KST calendar date, not UTC — a UTC calendar day runs 09:00 KST to 09:00
 // KST the next day, which would misattribute a Korean user's early-morning
@@ -37,39 +41,40 @@ export function extractSuggestedAction(text: string): { content: string; suggest
 }
 
 export async function generateWithClaude(prompt: string): Promise<string | null> {
-  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
+  const apiKey = Deno.env.get("GEMINI_API_KEY");
   if (!apiKey) return null;
 
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+        }),
       },
-      body: JSON.stringify({
-        model: CLAUDE_MODEL,
-        max_tokens: 1024,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
+    );
 
     if (!res.ok) return null;
 
     const data = await res.json();
-    if (data.type === "error" || data.stop_reason === "refusal") return null;
+    const candidate = data.candidates?.[0];
+    // "SAFETY"/"RECITATION"/etc. are Gemini's refusal-shaped finish reasons —
+    // same rationale as the old stop_reason === "refusal" check.
+    if (!candidate || candidate.finishReason !== "STOP") return null;
 
-    const textBlock = (data.content ?? []).find(
-      (b: { type: string }) => b.type === "text",
-    );
-    if (typeof textBlock?.text !== "string") return null;
+    const text = (candidate.content?.parts ?? [])
+      .map((p: { text?: string }) => p.text)
+      .filter((t: unknown): t is string => typeof t === "string")
+      .join("");
+
     // An empty/whitespace-only response is treated the same as a failure —
     // callers use `content ?? templateFallback()`, which only substitutes on
-    // null/undefined, not on "". Without this, a blank Claude response would
-    // ship (and cache) an empty report while still reporting generated_via
+    // null/undefined, not on "". Without this, a blank response would ship
+    // (and cache) an empty report while still reporting generated_via
     // inconsistently depending on how each caller checks for failure.
-    return textBlock.text.trim().length > 0 ? textBlock.text : null;
+    return text.trim().length > 0 ? text : null;
   } catch {
     return null;
   }
