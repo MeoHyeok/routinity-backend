@@ -82,9 +82,19 @@ export function buildDailyClaudePrompt(
     // No goals set — there's nothing to score "achieved/missed" against, so
     // don't ask the model to invent an achievement framing. Just narrate
     // what was actually logged, then nudge toward setting a goal.
+    //
+    // With only a handful of raw activity lines to work with, a model asked
+    // for "2-3 encouraging sentences" tends to pad the gap by inventing
+    // plausible-sounding routine details (a morning walk, reading, drinking
+    // water — none of which were ever logged) rather than admitting there's
+    // little to say. The "과장하지 말고" line alone didn't stop this in
+    // testing, so spell out the constraint explicitly and give it an
+    // explicit escape hatch (a short response is fine) instead of pressure
+    // to fill 2-3 sentences regardless of how little data there is.
     sections.push(
       "",
-      "이 사용자는 아직 목표를 설정하지 않았고, 그냥 그날그날 기록만 남기고 있어. 달성/미달성 같은 평가 없이, 오늘 기록된 활동을 있는 그대로 격려하는 톤으로 2~3문장으로 요약해줘. 과장하지 말고 실제 기록에 근거해서 구체적으로 작성해줘. 패턴 정보가 있다면 자연스럽게 녹여서 언급해줘.",
+      "이 사용자는 아직 목표를 설정하지 않았고, 그냥 그날그날 기록만 남기고 있어. 달성/미달성 같은 평가 없이, 위에 적힌 기록만 가지고 격려하는 톤으로 요약해줘.",
+      "절대 지키기: 위에 적히지 않은 활동(예: 산책, 독서, 수분 섭취 등)은 절대 언급하지 마. 기록에 없는 걸 있는 것처럼 지어내지 말고, 위 기록에 실제로 있는 항목만 가지고 이야기해. 기록이 짧으면 요약도 짧아도 괜찮아 — 억지로 2~3문장을 채우려고 없는 내용을 추가하지 마.",
       "그 다음, 목표를 설정하면 어떤 점이 좋아지는지 짧고 구체적으로 한 문장 제안해줘. 리포트 본문에는 이 제안을 포함하지 말고, 응답의 맨 마지막 줄에만 다음 형식 그대로 작성해줘: ACTION: <한 문장 제안>",
     );
   }
