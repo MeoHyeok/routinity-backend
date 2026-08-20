@@ -119,3 +119,67 @@ export function toAverageTimeBreakdownField(avg: AverageBreakdown | null): TimeB
     rest_minutes: avg.avgRestMinutes,
   };
 }
+
+// computeDayBreakdown requires a wake+sleep pair to define the "awake span"
+// (needed for restMinutes). A user with no goals who logs e.g. only
+// study_start/study_end (never wake/sleep) has real activity worth
+// summarizing, but computeDayBreakdown returns null for them and the report
+// builders fell all the way back to the "no data" message. This is a looser
+// fallback: wake time (if logged) plus study/meal minutes via
+// sumPairedMinutes, independent of whether a full wake+sleep pair exists.
+// Returns null only when there is truly nothing to report.
+export interface RawActivity {
+  wakeTime: string | null; // HH:MM, earliest "wake" log if any
+  studyMinutes: number;
+  mealMinutes: number;
+}
+
+export function computeRawActivity(logs: RoutineLog[]): RawActivity | null {
+  const wakeLogs = logs.filter((l) => l.type === "wake").sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  const wakeTime = wakeLogs.length > 0 ? timeOf(wakeLogs[0]) : null;
+  const studyMinutes = sumPairedMinutes(logs, "study_start", "study_end");
+  const mealMinutes = sumPairedMinutes(logs, "meal_start", "meal_end");
+  if (wakeTime === null && studyMinutes === 0 && mealMinutes === 0) return null;
+  return { wakeTime, studyMinutes, mealMinutes };
+}
+
+export function describeRawActivity(a: RawActivity | null): string[] {
+  if (!a) return [];
+  const lines: string[] = ["오늘 활동 기록"];
+  if (a.wakeTime) lines.push(`기상 시각: ${a.wakeTime}`);
+  if (a.studyMinutes > 0) lines.push(`공부 시간: ${formatMinutes(a.studyMinutes)}`);
+  if (a.mealMinutes > 0) lines.push(`식사 시간: ${formatMinutes(a.mealMinutes)}`);
+  return lines;
+}
+
+export interface AverageRawActivity {
+  daysCounted: number;
+  wakeLoggedDays: number;
+  avgStudyMinutes: number;
+  avgMealMinutes: number;
+}
+
+// Window counterpart of computeRawActivity/averageDayBreakdowns — averages
+// only over days that had *some* raw activity (goal-less equivalent of
+// averageDayBreakdowns' "days with a full wake+sleep pair" filter).
+export function averageRawActivities(activities: (RawActivity | null)[]): AverageRawActivity | null {
+  const valid = activities.filter((a): a is RawActivity => a !== null);
+  if (valid.length === 0) return null;
+
+  const avg = (sum: number) => Math.round(sum / valid.length);
+  return {
+    daysCounted: valid.length,
+    wakeLoggedDays: valid.filter((a) => a.wakeTime !== null).length,
+    avgStudyMinutes: avg(valid.reduce((s, a) => s + a.studyMinutes, 0)),
+    avgMealMinutes: avg(valid.reduce((s, a) => s + a.mealMinutes, 0)),
+  };
+}
+
+export function describeAverageRawActivity(avg: AverageRawActivity | null): string[] {
+  if (!avg) return [];
+  const lines: string[] = [`활동 기록 요약 (기록 있는 ${avg.daysCounted}일 기준)`];
+  if (avg.wakeLoggedDays > 0) lines.push(`기상 기록: ${avg.wakeLoggedDays}일`);
+  if (avg.avgStudyMinutes > 0) lines.push(`공부 시간: 일평균 ${formatMinutes(avg.avgStudyMinutes)}`);
+  if (avg.avgMealMinutes > 0) lines.push(`식사 시간: 일평균 ${formatMinutes(avg.avgMealMinutes)}`);
+  return lines;
+}

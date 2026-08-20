@@ -4,7 +4,7 @@ import { computeDailyScore, computeScores, type Goal, type RoutineLog } from "..
 import { buildDailyClaudePrompt, buildDailyTemplateReport } from "../_shared/daily-report.ts";
 import { dateOnly, dayRange, extractSuggestedAction, generateWithClaude, GEMINI_MODEL } from "../_shared/ai-report.ts";
 import { loadInsights } from "../_shared/insights.ts";
-import { computeDayBreakdown, toTimeBreakdownField } from "../_shared/day-breakdown.ts";
+import { computeDayBreakdown, computeRawActivity, toTimeBreakdownField } from "../_shared/day-breakdown.ts";
 import { computeDaySessions, resolveTodaySession, SESSION_LOOKBACK_MS } from "../_shared/day-sessions.ts";
 import { deriveDailySuggestedAction } from "../_shared/suggested-action.ts";
 import { enforceRateLimit } from "../_shared/rate-limit.ts";
@@ -107,6 +107,11 @@ export default {
     const scores = computeScores(goals, sessionLogs);
     const dailyScore = computeDailyScore(scores);
     const breakdown = computeDayBreakdown(sessionLogs);
+    // Goal-less fallback — only computed/used when there's no full
+    // wake+sleep breakdown, so a user with zero goals but *some* activity
+    // (e.g. only study_start/study_end, never wake/sleep) still gets a
+    // report instead of the flat "no data" message. See day-breakdown.ts.
+    const rawActivity = breakdown === null ? computeRawActivity(sessionLogs) : null;
 
     // Same enrichment-not-core rationale as /reports-weekly: don't fail the
     // whole report over a pattern-lookup error.
@@ -116,12 +121,12 @@ export default {
     }
     const insights = insightsResult.data;
 
-    const claudeRaw = await generateWithClaude(buildDailyClaudePrompt(scores, dailyScore, insights, breakdown));
+    const claudeRaw = await generateWithClaude(buildDailyClaudePrompt(scores, dailyScore, insights, breakdown, rawActivity));
     const claudeParsed = claudeRaw !== null ? extractSuggestedAction(claudeRaw) : null;
-    const content = claudeParsed?.content ?? buildDailyTemplateReport(scores, dailyScore, insights, breakdown);
+    const content = claudeParsed?.content ?? buildDailyTemplateReport(scores, dailyScore, insights, breakdown, rawActivity);
     const generatedVia = claudeRaw !== null ? GEMINI_MODEL : "template";
     const timeBreakdownField = toTimeBreakdownField(breakdown);
-    const suggestedAction = claudeParsed?.suggestedAction ?? deriveDailySuggestedAction(scores);
+    const suggestedAction = claudeParsed?.suggestedAction ?? deriveDailySuggestedAction(scores, breakdown !== null || rawActivity !== null);
 
     const insert = await ctx.supabaseAdmin
       .from("ai_reports")

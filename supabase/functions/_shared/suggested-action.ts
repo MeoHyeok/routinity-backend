@@ -25,8 +25,15 @@ const DAILY_ACTION_BY_TYPE: Record<string, (s: ScoreEntry) => string> = {
   },
 };
 
-export function deriveDailySuggestedAction(scores: ScoreEntry[]): string | null {
-  if (scores.length === 0) return null;
+// `hasActivity` covers the goal-less case: with no scorable goals there's
+// normally nothing to suggest (no gap to point at), but a user who's
+// actively logging without having set a goal yet has an obvious next step —
+// same "nothing to say" convention as everywhere else in this file, just
+// with one more thing counting as "something to say."
+export function deriveDailySuggestedAction(scores: ScoreEntry[], hasActivity = false): string | null {
+  if (scores.length === 0) {
+    return hasActivity ? "목표를 설정하면 오늘 기록을 목표 대비 달성률로 볼 수 있어요." : null;
+  }
   const worst = [...scores].sort((a, b) => scoreCredit(a) - scoreCredit(b))[0];
   if (scoreCredit(worst) >= 1) return null;
   return DAILY_ACTION_BY_TYPE[worst.target_type]?.(worst) ?? null;
@@ -45,9 +52,11 @@ function achievedRatio(s: GoalStat): number {
   return total === 0 ? 1 : s.achieved / total;
 }
 
-export function deriveWindowSuggestedAction(stats: GoalStat[]): string | null {
+export function deriveWindowSuggestedAction(stats: GoalStat[], hasActivity = false): string | null {
   const scored = stats.filter((s) => s.achieved + s.not_achieved + s.missing > 0);
-  if (scored.length === 0) return null;
+  if (scored.length === 0) {
+    return hasActivity ? "목표를 설정하면 이 기간 기록을 목표 대비 달성률로 볼 수 있어요." : null;
+  }
   const worst = [...scored].sort((a, b) => achievedRatio(a) - achievedRatio(b))[0];
   if (achievedRatio(worst) >= 1) return null;
   return WINDOW_ACTION_BY_TYPE[worst.target_type]?.() ?? null;

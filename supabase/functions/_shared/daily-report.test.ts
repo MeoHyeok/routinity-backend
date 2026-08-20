@@ -22,6 +22,37 @@ test("buildDailyTemplateReport: a day breakdown alone (no goals) still produces 
   assert.match(report, /06:50.*23:30/);
 });
 
+test("buildDailyTemplateReport: no goals but raw activity (no wake+sleep pair) still produces a report", () => {
+  const report = buildDailyTemplateReport([], null, null, null, {
+    wakeTime: null,
+    studyMinutes: 45,
+    mealMinutes: 0,
+  });
+  assert.doesNotMatch(report, /기록이 없어/);
+  assert.match(report, /오늘 활동 기록/);
+  assert.match(report, /45분/);
+  assert.match(report, /목표를 설정하면/);
+});
+
+test("buildDailyTemplateReport: a full breakdown takes priority over raw activity when both are given", () => {
+  const report = buildDailyTemplateReport(
+    [],
+    null,
+    null,
+    { wakeTime: "06:50", sleepTime: "23:30", awakeMinutes: 1000, mealMinutes: 90, studyMinutes: 60, restMinutes: 850 },
+    { wakeTime: "07:00", studyMinutes: 999, mealMinutes: 999 },
+  );
+  assert.match(report, /하루 시간 분배/);
+  assert.doesNotMatch(report, /오늘 활동 기록/);
+});
+
+test("buildDailyClaudePrompt: no goals asks for an activity summary + goal-setting nudge, not an achievement framing", () => {
+  const prompt = buildDailyClaudePrompt([], null, null, null, { wakeTime: "06:50", studyMinutes: 45, mealMinutes: 0 });
+  assert.match(prompt, /목표를 설정하지 않았고/);
+  assert.match(prompt, /ACTION:/);
+  assert.doesNotMatch(prompt, /가장 큰 로스/);
+});
+
 test("buildDailyTemplateReport: renders the daily score and per-goal status with Korean labels", () => {
   const report = buildDailyTemplateReport(
     [
@@ -57,6 +88,7 @@ test("buildDailyTemplateReport: appends a pattern section when insights are give
       best_weekday: { weekday: 1, label: "월", avg_daily_score: 90 },
       worst_weekday: { weekday: 6, label: "토", avg_daily_score: 20 },
       trend: { direction: "up", recent_avg: 70, previous_avg: 55 },
+      current_streak_days: 0,
     },
   );
   assert.match(report, /패턴 분석/);

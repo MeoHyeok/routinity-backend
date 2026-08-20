@@ -2,9 +2,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   averageDayBreakdowns,
+  averageRawActivities,
   computeDayBreakdown,
+  computeRawActivity,
   describeAverageBreakdown,
+  describeAverageRawActivity,
   describeDayBreakdown,
+  describeRawActivity,
   formatMinutes,
   toAverageTimeBreakdownField,
   toTimeBreakdownField,
@@ -148,4 +152,55 @@ test("toAverageTimeBreakdownField: null for null, maps the averaged fields other
     avgRestMinutes: 775,
   });
   assert.deepEqual(field, { active_minutes: 900, meal_minutes: 80, study_minutes: 45, rest_minutes: 775 });
+});
+
+test("computeRawActivity: null when there is truly no activity of any kind", () => {
+  assert.equal(computeRawActivity([]), null);
+  assert.equal(computeRawActivity([{ type: "sleep", timestamp: "2026-08-14T13:00:00Z" }]), null);
+});
+
+test("computeRawActivity: works without a wake+sleep pair (study logged, never wake/sleep)", () => {
+  const logs = [
+    { type: "study_start", timestamp: "2026-08-14T00:00:00Z" },
+    { type: "study_end", timestamp: "2026-08-14T01:00:00Z" },
+  ];
+  const a = computeRawActivity(logs)!;
+  assert.equal(a.wakeTime, null);
+  assert.equal(a.studyMinutes, 60);
+  assert.equal(a.mealMinutes, 0);
+});
+
+test("computeRawActivity: earliest wake wins, same rule as computeDayBreakdown", () => {
+  const logs = [
+    { type: "wake", timestamp: "2026-08-13T22:00:00Z" }, // 07:00 KST
+    { type: "wake", timestamp: "2026-08-13T21:00:00Z" }, // 06:00 KST
+  ];
+  const a = computeRawActivity(logs)!;
+  assert.equal(a.wakeTime, "06:00");
+});
+
+test("describeRawActivity: empty for null, includes only non-zero lines", () => {
+  assert.deepEqual(describeRawActivity(null), []);
+  const lines = describeRawActivity({ wakeTime: null, studyMinutes: 45, mealMinutes: 0 });
+  assert.equal(lines.length, 2); // header + study line, no wake/meal lines
+  assert.match(lines[1], /45분/);
+});
+
+test("averageRawActivities: null when no day has raw activity; averages only over days that do", () => {
+  assert.equal(averageRawActivities([null, null]), null);
+  const avg = averageRawActivities([
+    { wakeTime: "06:00", studyMinutes: 60, mealMinutes: 0 },
+    null,
+    { wakeTime: null, studyMinutes: 30, mealMinutes: 20 },
+  ])!;
+  assert.equal(avg.daysCounted, 2);
+  assert.equal(avg.wakeLoggedDays, 1);
+  assert.equal(avg.avgStudyMinutes, 45);
+  assert.equal(avg.avgMealMinutes, 10);
+});
+
+test("describeAverageRawActivity: empty for null, includes the day count", () => {
+  assert.deepEqual(describeAverageRawActivity(null), []);
+  const lines = describeAverageRawActivity({ daysCounted: 3, wakeLoggedDays: 2, avgStudyMinutes: 40, avgMealMinutes: 0 });
+  assert.match(lines[0], /3일 기준/);
 });

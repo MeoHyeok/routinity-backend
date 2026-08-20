@@ -18,6 +18,12 @@ const TREND_FLAT_THRESHOLD = 3;
 export interface DayScore {
   date: string; // YYYY-MM-DD, UTC
   dailyScore: number | null;
+  // Independent of goals/dailyScore — true if the user logged anything at
+  // all that day. Backs the activity streak below, which (unlike
+  // dailyScore) stays meaningful for a goal-less user: dailyScore is always
+  // null with no scorable goals, so a streak built on it would show 0
+  // forever even for someone logging every day.
+  hasActivity?: boolean;
 }
 
 export interface WeekdayAverage {
@@ -44,6 +50,7 @@ export interface InsightsResult {
   best_weekday: WeekdayHighlight | null;
   worst_weekday: WeekdayHighlight | null;
   trend: Trend | null;
+  current_streak_days: number;
 }
 
 function daysBetweenUTC(from: string, to: string): number {
@@ -54,6 +61,27 @@ function daysBetweenUTC(from: string, to: string): number {
 
 function weekdayOf(date: string): number {
   return new Date(`${date}T00:00:00.000Z`).getUTCDay();
+}
+
+// Counts consecutive days with logged activity, walking backward from
+// `today` by calendar date (not array position — `days` isn't required to
+// be contiguous or sorted) until the first day with no activity or no entry
+// at all. Built on hasActivity rather than dailyScore so it stays
+// meaningful for a goal-less user — dailyScore is always null with no
+// scorable goals, which would make a score-based streak read 0 forever even
+// for someone logging every day.
+function computeStreak(days: DayScore[], today: string): number {
+  const byDate = new Map(days.map((d) => [d.date, d.hasActivity ?? false]));
+  let streak = 0;
+  let cursor = today;
+  while (byDate.get(cursor)) {
+    streak++;
+    // Pure calendar-date subtraction on the "YYYY-MM-DD" string — these are
+    // already KST calendar dates (see loadInsights), not instants, so no
+    // KST_OFFSET_MS conversion belongs here; that would double-shift it.
+    cursor = new Date(Date.parse(`${cursor}T00:00:00.000Z`) - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  }
+  return streak;
 }
 
 export function computeInsights(days: DayScore[], today: string): InsightsResult {
@@ -110,7 +138,9 @@ export function computeInsights(days: DayScore[], today: string): InsightsResult
     trend = { direction, recent_avg, previous_avg };
   }
 
-  return { weekday_averages, best_weekday, worst_weekday, trend };
+  const current_streak_days = computeStreak(days, today);
+
+  return { weekday_averages, best_weekday, worst_weekday, trend, current_streak_days };
 }
 
 export interface LoadInsightsResult {
@@ -164,13 +194,13 @@ export async function loadInsights(supabase: SupabaseLike, today: string): Promi
     const goalsAsOfDay = goalsExistingBy(goals, dayRange(date).end);
     const dayLogs = sessionMap.get(date)?.logs ?? [];
     const scores = computeScores(goalsAsOfDay, dayLogs);
-    return { date, dailyScore: computeDailyScore(scores) };
+    return { date, dailyScore: computeDailyScore(scores), hasActivity: dayLogs.length > 0 };
   });
 
   return { data: computeInsights(dayScores, today), error: null };
 }
 
-// 0-2 Korean sentences narrating the pattern data, for splicing into a
+// 0-3 Korean sentences narrating the pattern data, for splicing into a
 // report's template text or Claude prompt. Shared by weekly-report.ts and
 // daily-report.ts so both cadences describe patterns the same way.
 export function describeInsights(insights: InsightsResult | null): string[] {
@@ -192,6 +222,12 @@ export function describeInsights(insights: InsightsResult | null): string[] {
     const { direction, recent_avg, previous_avg } = insights.trend;
     const verb = direction === "up" ? "올랐어요" : direction === "down" ? "떨어졌어요" : "비슷하게 유지되고 있어요";
     lines.push(`최근 일주일 평균이 지난주보다 ${verb} (${previous_avg}점 → ${recent_avg}점).`);
+  }
+
+  // Below 2 days isn't worth calling out — "1일 연속"이에요 reads oddly and
+  // isn't a meaningful streak yet.
+  if (insights.current_streak_days >= 2) {
+    lines.push(`${insights.current_streak_days}일 연속으로 기록을 남기고 있어요.`);
   }
 
   return lines;

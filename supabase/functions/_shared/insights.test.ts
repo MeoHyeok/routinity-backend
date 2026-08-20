@@ -91,7 +91,7 @@ test("describeInsights: null insights produces no lines", () => {
 
 test("describeInsights: empty insights (no scored days) produces no lines", () => {
   assert.deepEqual(
-    describeInsights({ weekday_averages: [], best_weekday: null, worst_weekday: null, trend: null }),
+    describeInsights({ weekday_averages: [], best_weekday: null, worst_weekday: null, trend: null, current_streak_days: 0 }),
     [],
   );
 });
@@ -102,6 +102,7 @@ test("describeInsights: skips the best/worst line when only one weekday has data
     best_weekday: { weekday: 5, label: "금", avg_daily_score: 80 },
     worst_weekday: { weekday: 5, label: "금", avg_daily_score: 80 },
     trend: null,
+    current_streak_days: 0,
   });
   assert.deepEqual(lines, []);
 });
@@ -112,6 +113,7 @@ test("describeInsights: describes best/worst weekday and an upward trend", () =>
     best_weekday: { weekday: 1, label: "월", avg_daily_score: 90 },
     worst_weekday: { weekday: 6, label: "토", avg_daily_score: 20 },
     trend: { direction: "up", recent_avg: 70, previous_avg: 55 },
+    current_streak_days: 0,
   });
   assert.equal(lines.length, 2);
   assert.match(lines[0], /월요일.*토요일/);
@@ -125,7 +127,62 @@ test("describeInsights: describes a flat trend without saying up or down", () =>
     best_weekday: null,
     worst_weekday: null,
     trend: { direction: "flat", recent_avg: 51, previous_avg: 50 },
+    current_streak_days: 0,
   });
   assert.equal(lines.length, 1);
   assert.match(lines[0], /유지되고 있어요/);
+});
+
+test("describeInsights: mentions the streak once it reaches 2 days", () => {
+  const lines = describeInsights({
+    weekday_averages: [],
+    best_weekday: null,
+    worst_weekday: null,
+    trend: null,
+    current_streak_days: 2,
+  });
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /2일 연속/);
+});
+
+test("describeInsights: a 1-day streak is not mentioned (not meaningful yet)", () => {
+  const lines = describeInsights({
+    weekday_averages: [],
+    best_weekday: null,
+    worst_weekday: null,
+    trend: null,
+    current_streak_days: 1,
+  });
+  assert.deepEqual(lines, []);
+});
+
+test("computeInsights: streak counts consecutive activity days back from today, stopping at the first gap", () => {
+  const result = computeInsights(
+    [
+      { date: "2026-08-18", dailyScore: null, hasActivity: true },
+      { date: "2026-08-19", dailyScore: null, hasActivity: false },
+      { date: "2026-08-20", dailyScore: null, hasActivity: true },
+      { date: "2026-08-21", dailyScore: null, hasActivity: true },
+      { date: "2026-08-22", dailyScore: null, hasActivity: true },
+    ],
+    "2026-08-22",
+  );
+  // 08-19 has no activity, so the streak stops there even though 08-18 does.
+  assert.equal(result.current_streak_days, 3);
+});
+
+test("computeInsights: streak works for a goal-less user (hasActivity true, dailyScore always null)", () => {
+  const result = computeInsights(
+    [
+      { date: "2026-08-20", dailyScore: null, hasActivity: true },
+      { date: "2026-08-21", dailyScore: null, hasActivity: true },
+    ],
+    "2026-08-21",
+  );
+  assert.equal(result.current_streak_days, 2);
+});
+
+test("computeInsights: streak is 0 when today itself has no activity", () => {
+  const result = computeInsights([{ date: "2026-08-20", dailyScore: 50, hasActivity: false }], "2026-08-21");
+  assert.equal(result.current_streak_days, 0);
 });

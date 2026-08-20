@@ -12,7 +12,13 @@ import { serverError } from "../_shared/errors.ts";
 import { requestLogger } from "../_shared/log.ts";
 import { dateOnly, dayRange, extractSuggestedAction, generateWithClaude, GEMINI_MODEL } from "../_shared/ai-report.ts";
 import { loadInsights } from "../_shared/insights.ts";
-import { averageDayBreakdowns, computeDayBreakdown, toAverageTimeBreakdownField } from "../_shared/day-breakdown.ts";
+import {
+  averageDayBreakdowns,
+  averageRawActivities,
+  computeDayBreakdown,
+  computeRawActivity,
+  toAverageTimeBreakdownField,
+} from "../_shared/day-breakdown.ts";
 import { computeDaySessions, sessionsByDate, SESSION_LOOKBACK_MS } from "../_shared/day-sessions.ts";
 import { deriveWindowSuggestedAction } from "../_shared/suggested-action.ts";
 
@@ -99,15 +105,20 @@ export default {
 
     const dailyScores: DailyScores[] = [];
     const dayBreakdowns = [];
+    const rawActivities = [];
     for (const date of dateList) {
       const dayLogs = sessionMap.get(date)?.logs ?? [];
       // Only score goals that existed by this day — see goalsExistingBy's
       // doc comment (same fix applied to /scores, /insights, /reports-monthly).
       const goalsAsOfDay = goalsExistingBy(goals, dayRange(date).end);
       dailyScores.push({ date, scores: computeScores(goalsAsOfDay, dayLogs) });
-      dayBreakdowns.push(computeDayBreakdown(dayLogs));
+      const dayBreakdown = computeDayBreakdown(dayLogs);
+      dayBreakdowns.push(dayBreakdown);
+      rawActivities.push(dayBreakdown === null ? computeRawActivity(dayLogs) : null);
     }
     const breakdown = averageDayBreakdowns(dayBreakdowns);
+    // Goal-less fallback — see reports-daily/index.ts for the rationale.
+    const rawActivity = breakdown === null ? averageRawActivities(rawActivities) : null;
 
     const stats = summarizeWeek(dailyScores);
 
@@ -120,12 +131,12 @@ export default {
     }
     const insights = insightsResult.data;
 
-    const claudeRaw = await generateWithClaude(buildClaudePrompt(stats, insights, breakdown));
+    const claudeRaw = await generateWithClaude(buildClaudePrompt(stats, insights, breakdown, rawActivity));
     const claudeParsed = claudeRaw !== null ? extractSuggestedAction(claudeRaw) : null;
-    const content = claudeParsed?.content ?? buildTemplateReport(stats, insights, breakdown);
+    const content = claudeParsed?.content ?? buildTemplateReport(stats, insights, breakdown, rawActivity);
     const generatedVia = claudeRaw !== null ? GEMINI_MODEL : "template";
     const timeBreakdownField = toAverageTimeBreakdownField(breakdown);
-    const suggestedAction = claudeParsed?.suggestedAction ?? deriveWindowSuggestedAction(stats);
+    const suggestedAction = claudeParsed?.suggestedAction ?? deriveWindowSuggestedAction(stats, breakdown !== null || rawActivity !== null);
 
     const insert = await ctx.supabaseAdmin
       .from("ai_reports")

@@ -7,6 +7,13 @@ test("buildMonthlyTemplateReport: no stats and no breakdown returns the no-data 
   assert.match(report, /목표나 기록이 없어/);
 });
 
+test("buildMonthlyTemplateReport: no goals but raw activity (no wake+sleep pair) still produces a report", () => {
+  const report = buildMonthlyTemplateReport([], null, null, { daysCounted: 10, wakeLoggedDays: 3, avgStudyMinutes: 40, avgMealMinutes: 0 });
+  assert.doesNotMatch(report, /기록이 없어/);
+  assert.match(report, /활동 기록 요약/);
+  assert.match(report, /목표를 설정하면/);
+});
+
 test("buildMonthlyTemplateReport: an average breakdown alone (no goals) still produces a report", () => {
   const report = buildMonthlyTemplateReport([], null, {
     daysCounted: 20,
@@ -48,6 +55,7 @@ test("buildMonthlyTemplateReport: appends a pattern section when insights are gi
       best_weekday: { weekday: 1, label: "월", avg_daily_score: 90 },
       worst_weekday: { weekday: 6, label: "토", avg_daily_score: 20 },
       trend: null,
+      current_streak_days: 0,
     },
   );
   assert.match(report, /패턴 분석/);

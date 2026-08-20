@@ -6,6 +6,15 @@ test("deriveDailySuggestedAction: no scores returns null", () => {
   assert.equal(deriveDailySuggestedAction([]), null);
 });
 
+test("deriveDailySuggestedAction: no scores but has activity suggests setting a goal", () => {
+  const action = deriveDailySuggestedAction([], true);
+  assert.match(action!, /목표를 설정하면/);
+});
+
+test("deriveDailySuggestedAction: no scores and no activity still returns null even with hasActivity unset", () => {
+  assert.equal(deriveDailySuggestedAction([], false), null);
+});
+
 test("deriveDailySuggestedAction: everything achieved returns null", () => {
   const action = deriveDailySuggestedAction([
     { target_type: "wake_time", target_value: "07:00", actual_value: "06:50", status: "achieved" as const },
@@ -40,6 +49,11 @@ test("deriveDailySuggestedAction: a missing goal outranks a partially-met one", 
 
 test("deriveWindowSuggestedAction: no scored goals returns null", () => {
   assert.equal(deriveWindowSuggestedAction([]), null);
+});
+
+test("deriveWindowSuggestedAction: no scored goals but has activity suggests setting a goal", () => {
+  const action = deriveWindowSuggestedAction([], true);
+  assert.match(action!, /목표를 설정하면/);
 });
 
 test("deriveWindowSuggestedAction: perfect achievement across all goals returns null", () => {
