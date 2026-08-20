@@ -219,6 +219,8 @@ Authorization: Bearer <access_token>
 
 **2026-08-20 변경**: AI 생성 엔진을 Claude에서 Gemini로 전환(해커톤 비용 절감을 위한 실험). `generated_via`가 이제 고정된 `"claude"` 대신 **실제 생성에 쓰인 모델 id를 그대로** 반환한다(예: `"gemini-3.6-flash"`) — 클라이언트가 이 필드를 `=== "claude"`로 문자열 비교하고 있었다면 `!== "template"`(AI 생성 여부만 판단) 방식으로 바꿔야 함. 필드명/타입(`string | "template"`)은 그대로.
 
+**같은 날 후속 수정**: `generated_via`는 원래 `time_breakdown`/`suggested_action`과 달리 `ai_reports`에 저장되지 않고 생성 시점에만 계산돼서, **캐시 응답(`cached: true`)에는 이 필드 자체가 항상 빠져 있었다** — iOS 통합 테스트 중 발견(같은 날 두 번째 조회부터 AI 생성 리포트가 "템플릿"으로 잘못 표시됨). `ai_reports`에 `generated_via` 컬럼을 추가해 생성 시점에 함께 저장하도록 고쳐서, 이제 `time_breakdown`/`suggested_action`과 동일하게 캐시 응답에도 항상 포함된다.
+
 **요청 헤더**
 ```
 Authorization: Bearer <access_token>
@@ -238,7 +240,7 @@ Authorization: Bearer <access_token>
 
 **응답 200 (같은 날 재조회 — 캐시됨)**
 ```json
-{ "period": "weekly", "content": "...", "time_breakdown": { "...": "..." }, "suggested_action": "...", "cached": true }
+{ "period": "weekly", "content": "...", "time_breakdown": { "...": "..." }, "suggested_action": "...", "cached": true, "generated_via": "gemini-3.6-flash" }
 ```
 
 - **`time_breakdown`** (2026-08-17 추가): daily와 같은 필드/필드명이지만, 여기서는 그 주 동안 기상+취침이 둘 다 있었던 날들의 **일평균**(분 단위). "일평균 시간 분배" 텍스트 섹션과 동일한 값. 그런 날이 하나도 없으면 `null`. daily와 동일하게 생성 시점에 저장되어 캐시 재조회 시 값이 안 바뀜
@@ -305,7 +307,7 @@ Authorization: Bearer <access_token>
 
 **응답 200 (같은 날 재조회 — 캐시됨)**
 ```json
-{ "period": "daily", "date": "2026-08-14", "content": "...", "time_breakdown": { "...": "..." }, "suggested_action": "...", "cached": true }
+{ "period": "daily", "date": "2026-08-14", "content": "...", "time_breakdown": { "...": "..." }, "suggested_action": "...", "cached": true, "generated_via": "gemini-3.6-flash" }
 ```
 
 - **`time_breakdown`** (2026-08-17 추가, iOS 요청 — "하루를 어떻게 보냈는지" 차트용): 아래 "하루 시간 분배" 텍스트 섹션과 같은 숫자를 분 단위로 구조화한 필드. `{ active_minutes, meal_minutes, study_minutes, rest_minutes }`, 그날 기상+취침이 둘 다 없어서 시간 분배 자체를 계산 못 하면 `null`. **생성 시점에 `content`와 함께 `ai_reports`에 저장**되기 때문에 캐시로 재조회해도(`cached: true`) 그때 계산된 값 그대로 나옴 — 그날 나중에 로그를 더 추가해도 이미 캐시된 리포트의 `time_breakdown`은 안 바뀜(텍스트와 항상 일치하도록 의도된 동작)
@@ -362,7 +364,7 @@ Authorization: Bearer <access_token>
 
 **응답 200 (같은 날 재조회 — 캐시됨)**
 ```json
-{ "period": "monthly", "date_range": { "from": "2026-07-16", "to": "2026-08-14" }, "content": "...", "time_breakdown": { "...": "..." }, "suggested_action": "...", "cached": true }
+{ "period": "monthly", "date_range": { "from": "2026-07-16", "to": "2026-08-14" }, "content": "...", "time_breakdown": { "...": "..." }, "suggested_action": "...", "cached": true, "generated_via": "gemini-3.6-flash" }
 ```
 
 - **`time_breakdown`** (2026-08-17 추가): weekly와 동일 — 30일 중 기상+취침이 둘 다 있었던 날들의 일평균(분 단위), 그런 날이 없으면 `null`, 생성 시점에 저장되어 캐시 재조회 시 안 바뀜

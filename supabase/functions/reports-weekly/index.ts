@@ -34,7 +34,7 @@ export default {
 
     const cached = await ctx.supabase
       .from("ai_reports")
-      .select("content, time_breakdown, suggested_action, created_at")
+      .select("content, time_breakdown, suggested_action, generated_via, created_at")
       .eq("period", "weekly")
       .gte("created_at", todayStart)
       .lt("created_at", todayEnd)
@@ -53,6 +53,7 @@ export default {
           time_breakdown: cached.data.time_breakdown,
           suggested_action: cached.data.suggested_action,
           cached: true,
+          generated_via: cached.data.generated_via,
         },
         { status: 200 },
       ));
@@ -128,8 +129,8 @@ export default {
 
     const insert = await ctx.supabaseAdmin
       .from("ai_reports")
-      .insert({ user_id: userId, period: "weekly", content, time_breakdown: timeBreakdownField, suggested_action: suggestedAction })
-      .select("content, time_breakdown, suggested_action")
+      .insert({ user_id: userId, period: "weekly", content, time_breakdown: timeBreakdownField, suggested_action: suggestedAction, generated_via: generatedVia })
+      .select("content, time_breakdown, suggested_action, generated_via")
       .single();
 
     if (insert.error) {
@@ -140,7 +141,7 @@ export default {
       if (insert.error.code === "23505") {
         const raced = await ctx.supabase
           .from("ai_reports")
-          .select("content, time_breakdown, suggested_action")
+          .select("content, time_breakdown, suggested_action, generated_via")
           .eq("period", "weekly")
           .gte("created_at", todayStart)
           .lt("created_at", todayEnd)
@@ -156,6 +157,7 @@ export default {
               time_breakdown: raced.data.time_breakdown,
               suggested_action: raced.data.suggested_action,
               cached: true,
+              generated_via: raced.data.generated_via,
             },
             { status: 200 },
           ));
@@ -171,7 +173,7 @@ export default {
         time_breakdown: insert.data.time_breakdown,
         suggested_action: insert.data.suggested_action,
         cached: false,
-        generated_via: generatedVia,
+        generated_via: insert.data.generated_via,
       },
       { status: 200 },
     ));
